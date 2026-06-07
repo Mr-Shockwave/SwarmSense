@@ -60,20 +60,21 @@ def _latest_frame(images_key: str) -> str | None:
     """Most recent cached base64 frame for a rover, or None if none cached."""
     try:
         client = get_sync_redis()
-        raw = client.lindex(images_key, -1)
+        # LPUSH inserts newest at the head, so index 0 = most recent frame.
+        raw = client.lindex(images_key, 0)
     except Exception:  # noqa: BLE001
         return None
     if raw is None:
         return None
     if isinstance(raw, bytes):
         raw = raw.decode("utf-8", "ignore")
-    # Frame may be a bare base64 string or wrapped in JSON ({"b64": ...}).
+    # Frame is stored by rover_state.add_image as {"ts", "photo", "caption", "coord"}.
     try:
         obj = json.loads(raw)
     except (ValueError, TypeError):
         return raw
     if isinstance(obj, dict):
-        return obj.get("b64") or obj.get("image")
+        return obj.get("photo") or obj.get("b64") or obj.get("image")
     return raw if isinstance(raw, str) else None
 
 
@@ -119,33 +120,56 @@ def _store_image(image_id: str, photo_b64: str) -> None:
 
 
 def run_vision_subagent(rover_id: str) -> dict[str, Any]:
-    """Detect whether the rover's latest frame contains the target. Boolean verdict.
+    """Analyze the rover's latest frame against mission criteria.
 
-    Frame dedup is handled upstream by the main agent (process_image). Rich
-    description happens later in the research agent on scientist approval.
+    Returns findings list + image_id so run_rover_cycle can bridge to the UI.
+    Deduplication is done via perceptual hash; static scenes are skipped.
     """
     criteria = redis_get_raw("mission:criteria") or "(no criteria)"
-    photo_b64 = _latest_frame(f"{rover_id}:images")
+    images_key = f"{rover_id}:images"
+    photo_b64 = _latest_frame(images_key)
 
-    image_id = None
-    found = False
-    if photo_b64:
-        phash = _perceptual_hash(photo_b64)
+    phash = _perceptual_hash(photo_b64) if photo_b64 else None
+    prev = redis_get_raw(f"{rover_id}:vision:state") or {}
+    is_duplicate = (
+        phash is not None
+        and prev.get("hash") is not None
+        and prev.get("criteria") == criteria
+        and _hamming(phash, int(prev["hash"])) <= DEDUP_HAMMING_THRESHOLD
+    )
+
+    if is_duplicate:
+        image_id = prev.get("image_id")
+        cached = redis_get_raw(f"{rover_id}:vision:findings") or {"findings": []}
+        findings = cached.get("findings", [])
+    else:
         image_id = f"{phash:016x}" if phash is not None else None
-        found = _run_sync(analyze_photo(photo_b64, str(criteria)))
+        findings = []
+        if photo_b64:
+            vision_result = _run_sync(analyze_photo(photo_b64, str(criteria)))
+            findings = vision_result.get("findings", [])
+        if photo_b64 and image_id:
+            _store_image(image_id, photo_b64)
+        redis_set_raw(
+            f"{rover_id}:vision:state",
+            {"hash": phash, "image_id": image_id, "criteria": criteria},
+        )
+
+    vision_payload = {"findings": findings, "image_id": image_id}
+    redis_set_raw(f"{rover_id}:vision:findings", vision_payload)
 
     result = {
         "agent": subagent_label(rover_id, "vision"),
-        "match": found,
+        "match": bool(findings),
+        "findings": findings,
         "image_id": image_id,
         "criteria": criteria,
         "has_frame": photo_b64 is not None,
+        "deduped": is_duplicate,
     }
     redis_set_raw(f"{rover_id}:vision:last", result)
-    if found:
-        redis_publish_raw(f"{rover_id}:vision", result)
-        # TODO [Person 1 + Person 2]: call findings_state.add_finding(...) so the
-        # scientist UI receives scientist:ping (see redis_layer/findings_state.py).
+    if findings and not is_duplicate:
+        redis_publish_raw(f"{rover_id}:vision", vision_payload)
     return result
 
 

@@ -20,7 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import settings
 
 # Routers
-from api.routes import mission, map as map_routes, rovers, targets, copilot, findings
+from api.routes import mission, map as map_routes, rovers, targets, copilot, findings, admin
 from api import websocket as ws
 
 logging.basicConfig(level=logging.INFO)
@@ -40,7 +40,6 @@ async def lifespan(app: FastAPI):
         logger.warning("Weave init skipped/failed: %s", exc)
 
     # --- 2. Redis ---
-    # TODO [Person 2]: establish the Redis connection and store it on app.state.
     try:
         from redis_layer.client import get_redis, ping
         app.state.redis = get_redis()
@@ -48,6 +47,14 @@ async def lifespan(app: FastAPI):
         logger.info("Redis connected: %s", settings.REDIS_URL)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Redis connect failed: %s", exc)
+
+    # --- 2b. Flush Redis on startup (gated by FLUSH_ON_STARTUP) ---
+    if settings.FLUSH_ON_STARTUP:
+        try:
+            await get_redis().flushdb()
+            logger.info("Redis flushed on startup (FLUSH_ON_STARTUP=true)")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Redis flush failed: %s", exc)
 
     # --- 3. Initialize map grid as fully unexplored ---
     # TODO [Person 2]: call map_state.initialize_grid().
@@ -116,6 +123,7 @@ app.include_router(rovers.router, prefix="/rovers", tags=["rovers"])
 app.include_router(targets.router, prefix="/targets", tags=["targets"])
 app.include_router(findings.router, prefix="/findings", tags=["findings"])
 app.include_router(copilot.router, prefix="/api", tags=["copilot"])
+app.include_router(admin.router, prefix="/admin", tags=["admin"])
 
 # --- WebSocket ---
 app.include_router(ws.router, tags=["websocket"])

@@ -32,6 +32,11 @@ class MissionStartRequest(BaseModel):
     criteria: str = ""  # e.g. "ping me if you see anything blue or circular"
 
 
+async def _publish_stage(index: int) -> None:
+    from redis_layer import client as redis_client
+    await redis_client.publish("mission:progress", {"type": "stage", "index": index})
+
+
 @router.post("/start")
 async def start_mission(req: MissionStartRequest):
     """Begin a mission.
@@ -43,9 +48,23 @@ async def start_mission(req: MissionStartRequest):
     TODO [Person 1]: launch the CrewAI orchestrator here (get_crew()) so real
     agents pick up mission:goal / mission:criteria and begin exploring.
     """
+    # Stage 0: prompt received
+    await _publish_stage(0)
+
     record = await mission_state.set_mission(req.goal, req.criteria)
 
+    # Stage 1: saved to Redis
+    await _publish_stage(1)
+
+    # Stage 2: zone splitting (placeholder — real split not yet implemented)
+    await _publish_stage(2)
+
     rover_ids = list(ROVER_IDS)
+
+    # Stage 3 + 4: dispatching to each rover
+    for i, _ in enumerate(rover_ids):
+        await _publish_stage(3 + i)
+
     if settings.SIMULATION_MODE:
         dev_capture.start(rover_ids)
 
