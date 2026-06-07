@@ -197,6 +197,76 @@ def run_research_subagent(rover_id: str) -> dict[str, Any]:
     return result
 
 
+<<<<<<< HEAD
+def run_research_subagent(rover_id: str) -> dict[str, Any]:
+    """Summarize vision findings for this rover (stub — no LLM required for dry-run)."""
+    criteria = redis_get_raw("mission:criteria") or "(no criteria)"
+    vision_data = redis_get_raw(f"{rover_id}:vision:findings") or {}
+    if not vision_data.get("findings"):
+        last = redis_get_raw(f"{rover_id}:vision:last") or {}
+        vision_data = {"findings": last.get("findings", []), "image_id": last.get("image_id")}
+
+    findings = vision_data.get("findings", [])
+
+    # Cross-feed: fold in the error subagent's latest diagnosis so a fault (e.g.
+    # an occluded camera) can qualify the research summary. This is the
+    # subagent->subagent comm on the deterministic path; the CrewAI path does the
+    # same via Task(context=[vision_task, error_task]) in rover_managers.py.
+    error_data = redis_get_raw(f"{rover_id}:error:last") or {}
+    error_note = error_data.get("diagnosis", "") if error_data.get("error_count") else ""
+
+    summary = ""
+    if findings:
+        labels = [f.get("label", "object") for f in findings]
+        summary = (
+            f"Research summary for {rover_id}: detected {len(findings)} candidate(s) "
+            f"matching criteria {criteria!r}: {', '.join(labels)}."
+        )
+        if error_note:
+            summary += f" Caveat from error analysis: {error_note}"
+
+    result = {
+        "agent": subagent_label(rover_id, "research"),
+        "findings_count": len(findings),
+        "summary": summary or f"No findings to research for {rover_id}.",
+        "criteria": criteria,
+        "image_id": vision_data.get("image_id"),
+        "error_context": error_note,
+    }
+    redis_set_raw(f"{rover_id}:research:last", result)
+    if findings:
+        redis_publish_raw(f"{rover_id}:research", result)
+    return result
+
+
+def run_error_subagent(rover_id: str) -> dict[str, Any]:
+    """Diagnose the latest faults logged for this rover (stub)."""
+    errors = redis_get_raw(f"{rover_id}:errors") or []
+    if not isinstance(errors, list):
+        errors = [errors] if errors else []
+
+    diagnosis = ""
+    if errors:
+        latest = errors[0] if errors else {}
+        diagnosis = (
+            f"Error analysis for {rover_id}: {len(errors)} fault(s) on record. "
+            f"Latest: {latest!r}. Recommend inspect sensors and retry last action."
+        )
+
+    result = {
+        "agent": subagent_label(rover_id, "error"),
+        "error_count": len(errors),
+        "diagnosis": diagnosis or f"No faults recorded for {rover_id}.",
+        "errors": errors[:5],
+    }
+    redis_set_raw(f"{rover_id}:error:last", result)
+    if errors:
+        redis_publish_raw(f"{rover_id}:error", result)
+    return result
+
+
+>>>>>>> 93c5883a4c6f3626c5794a728766dbafa0b7ae91
+>>>>>>> 93c5883a4c6f3626c5794a728766dbafa0b7ae91
 # ── CrewAI Agent factories ───────────────────────────────────────────────────
 
 
