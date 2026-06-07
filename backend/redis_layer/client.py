@@ -121,6 +121,24 @@ async def smembers(key: str) -> list:
         return []
 
 
+# --- Hashes ---
+
+async def hset(key: str, field: str, value: Any) -> None:
+    try:
+        await get_redis().hset(key, field, _encode(value))
+    except Exception as exc:  # noqa: BLE001
+        _warn_once(exc)
+
+
+async def hgetall(key: str) -> dict:
+    try:
+        raw = await get_redis().hgetall(key)
+        return {k: _decode(v) for k, v in raw.items()}
+    except Exception as exc:  # noqa: BLE001
+        _warn_once(exc)
+        return {}
+
+
 # --- Pub/Sub ---
 
 async def publish(channel: str, message: Any) -> None:

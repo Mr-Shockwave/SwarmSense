@@ -51,3 +51,19 @@ export async function listTargets() {
   const { data } = await client.get("/targets/list");
   return data;
 }
+
+// --- Findings (scientist-relevant detections) ---
+export async function getFindings(limit = 200) {
+  const { data } = await client.get("/findings", { params: { limit } });
+  return data; // { count, findings: [{ id, rover_id, label, summary, description, photo, coord, criteria, confidence, status, ts }] }
+}
+
+export async function createFinding(finding) {
+  const { data } = await client.post("/findings", finding);
+  return data;
+}
+
+export async function setFindingStatus(findingId, status) {
+  const { data } = await client.post(`/findings/${findingId}/status`, { status });
+  return data;
+}

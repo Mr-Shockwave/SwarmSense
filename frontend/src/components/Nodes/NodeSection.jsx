@@ -1,8 +1,38 @@
-// Expandable per-robot section streaming captured frames from Redis. Owner: Person 4.
-import React from "react";
+import React, { useState, useEffect } from "react";
 
 export default function NodeSection({ node, frames = [], open, running, onToggle }) {
   const live = running && frames.length > 0;
+
+  // null = tracking latest. Otherwise, the ts of the frame we're pinned to.
+  const [pinnedTs, setPinnedTs] = useState(null);
+
+  const frame = pinnedTs == null
+    ? frames[0]
+    : frames.find((f) => f.ts === pinnedTs) ?? frames[0];
+
+  const currentIdx = frame ? frames.indexOf(frame) : 0;
+
+  const goOlder = () => {
+    const next = frames[currentIdx + 1];
+    if (next) setPinnedTs(next.ts);
+  };
+
+  const goNewer = () => {
+    if (currentIdx === 1) {
+      // one step from latest — just resume tracking
+      setPinnedTs(null);
+    } else {
+      const next = frames[currentIdx - 1];
+      if (next) setPinnedTs(next.ts);
+    }
+  };
+
+  const resume = () => setPinnedTs(null);
+
+  const tracking = pinnedTs == null;
+  const atOldest = currentIdx >= frames.length - 1;
+  const atLatest = currentIdx === 0;
+
   return (
     <section className={`node-section ${open ? "open" : ""} ${live ? "live" : ""}`}>
       <button className="node-header" onClick={() => onToggle(node.id)}>
@@ -15,28 +45,41 @@ export default function NodeSection({ node, frames = [], open, running, onToggle
 
       {open && (
         <div className="node-body">
-          {frames.length === 0 ? (
+          {!frame ? (
             <div className="frames-empty">
               {running ? "Waiting for first capture…" : "No frames yet — start a mission."}
             </div>
           ) : (
-            // Newest first; each new frame fades in one-by-one.
-            frames.map((f, i) => (
-              <div className="frame" key={`${f.ts}-${i}`}>
-                <img src={f.photo} alt={f.caption || "capture"} />
+            <div className="frame-viewer">
+              <div className="frame-img-wrap">
+                <img key={frame.ts} src={frame.photo} alt={frame.caption || "capture"} className="frame-img" />
+
+                {frames.length > 1 && (
+                  <div className="frame-arrows">
+                    <button className="frame-arrow" onClick={goOlder} disabled={atOldest} title="Older">‹</button>
+                    <button className="frame-arrow" onClick={goNewer} disabled={atLatest} title="Newer">›</button>
+                  </div>
+                )}
+              </div>
+
+              <div className="frame-footer">
                 <div className="frame-meta">
-                  <span className="cap">{f.caption || "Captured frame"}</span>
-                  {f.coord && (f.coord.x != null) && (
-                    <span className="sub">
-                      coord ({f.coord.x}, {f.coord.y})
-                    </span>
-                  )}
-                  {f.ts && (
-                    <span className="sub">{new Date(f.ts * 1000).toLocaleTimeString()}</span>
+                  <span className="cap">{frame.caption || "Captured frame"}</span>
+                  <span className="sub">
+                    {frame.coord?.x != null && `(${frame.coord.x}, ${frame.coord.y}) · `}
+                    {frame.ts && new Date(frame.ts * 1000).toLocaleTimeString()}
+                  </span>
+                </div>
+
+                <div className="frame-controls">
+                  {tracking ? (
+                    <span className="slideshow-status">● live</span>
+                  ) : (
+                    <button className="resume-btn" onClick={resume}>▶ Resume</button>
                   )}
                 </div>
               </div>
-            ))
+            </div>
           )}
         </div>
       )}

@@ -20,7 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import settings
 
 # Routers
-from api.routes import mission, map as map_routes, rovers, targets, copilot
+from api.routes import mission, map as map_routes, rovers, targets, copilot, findings
 from api import websocket as ws
 
 logging.basicConfig(level=logging.INFO)
@@ -89,6 +89,7 @@ app.include_router(mission.router, prefix="/mission", tags=["mission"])
 app.include_router(map_routes.router, prefix="/map", tags=["map"])
 app.include_router(rovers.router, prefix="/rovers", tags=["rovers"])
 app.include_router(targets.router, prefix="/targets", tags=["targets"])
+app.include_router(findings.router, prefix="/findings", tags=["findings"])
 app.include_router(copilot.router, prefix="/api", tags=["copilot"])
 
 # --- WebSocket ---
