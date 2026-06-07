@@ -164,41 +164,6 @@ def run_vision_subagent(rover_id: str) -> dict[str, Any]:
 
 
 def run_research_subagent(rover_id: str) -> dict[str, Any]:
-    """Generate research context for a vision match. Skips if no match."""
-    vision_result = redis_get_vision_last(rover_id)
-
-    if not vision_result or not vision_result.get("match"):
-        result = {
-            "agent": subagent_label(rover_id, "research"),
-            "status": "skipped",
-            "reason": "no_vision_match_or_no_data",
-        }
-        redis_set_raw(f"{rover_id}:research:last", result)
-        return result
-
-    image_id = vision_result.get("image_id")
-    criteria = vision_result.get("criteria", "unknown")
-    photo_b64 = redis_get_image(image_id) if image_id else None
-
-    result = {
-        "agent": subagent_label(rover_id, "research"),
-        "status": "ready",
-        "image_id": image_id,
-        "criteria": criteria,
-        "has_image": photo_b64 is not None,
-        "summary": "",
-        "context": {
-            "vision": vision_result,
-            "rover_id": rover_id,
-        },
-    }
-    redis_set_raw(f"{rover_id}:research:last", result)
-    redis_publish_raw(f"{rover_id}:research", result)
-    return result
-
-
-<<<<<<< HEAD
-def run_research_subagent(rover_id: str) -> dict[str, Any]:
     """Summarize vision findings for this rover (stub — no LLM required for dry-run)."""
     criteria = redis_get_raw("mission:criteria") or "(no criteria)"
     vision_data = redis_get_raw(f"{rover_id}:vision:findings") or {}
@@ -265,8 +230,6 @@ def run_error_subagent(rover_id: str) -> dict[str, Any]:
     return result
 
 
->>>>>>> 93c5883a4c6f3626c5794a728766dbafa0b7ae91
->>>>>>> 93c5883a4c6f3626c5794a728766dbafa0b7ae91
 # ── CrewAI Agent factories ───────────────────────────────────────────────────
 
 
