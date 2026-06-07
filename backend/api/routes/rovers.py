@@ -15,6 +15,12 @@ from redis_layer import rover_state
 router = APIRouter()
 
 
+@router.get("/list")
+async def rovers_list():
+    """Return the active rover IDs (driven by ROVER_COUNT env var)."""
+    return {"rovers": [{"id": rid, "label": rid.replace("rover", "N"), "name": rid.replace("rover", "Rover ")} for rid in ROVER_IDS]}
+
+
 @router.get("/status")
 async def rovers_status():
     """Return per-rover position, zone, current task, last error.

@@ -31,6 +31,11 @@ export async function getRoversStatus() {
   return data;
 }
 
+export async function getRoversList() {
+  const { data } = await client.get("/rovers/list");
+  return data; // { rovers: [{ id, label, name }] }
+}
+
 export async function getRoverImages(roverId, limit = 100) {
   const { data } = await client.get(`/rovers/${roverId}/images`, { params: { limit } });
   return data; // { rover_id, count, frames: [{ ts, photo, caption, coord }] }

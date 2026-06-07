@@ -11,11 +11,10 @@ import FindingPing from "./components/Findings/FindingPing.jsx";
 import CopilotOverlay from "./components/CopilotOverlay.jsx";
 import useFindings from "./hooks/useFindings.js";
 import useLiveSocket from "./hooks/useLiveSocket.js";
-import { startMission, stopMission, getRoverImages, resetApp } from "./services/api.js";
+import { startMission, stopMission, getRoverImages, resetApp, getRoversList } from "./services/api.js";
 
-const INITIAL_NODES = [
+const FALLBACK_NODES = [
   { id: "rover1", label: "N1", name: "Rover 1" },
-  { id: "rover2", label: "N2", name: "Rover 2" },
 ];
 
 const FALLBACK_STAGES = [
@@ -39,7 +38,7 @@ export default function App() {
   const [prompt, setPrompt] = useState("");
   const [running, setRunning] = useState(false);
 
-  const [nodes] = useState(INITIAL_NODES);
+  const [nodes, setNodes] = useState(FALLBACK_NODES);
   const [openNodes, setOpenNodes] = useState({});
   const [images, setImages] = useState({});
 
@@ -51,6 +50,13 @@ export default function App() {
 
   const pollRef = useRef(null);
   const stageTimerRef = useRef(null); // kept for fallback only
+
+  // Load real rover list from backend on mount.
+  useEffect(() => {
+    getRoversList()
+      .then((data) => { if (data?.rovers?.length) setNodes(data.rovers); })
+      .catch(() => {});
+  }, []);
 
   // --- Findings: poll + ping on new ones ---
   const handleNewFinding = useCallback((finding) => {

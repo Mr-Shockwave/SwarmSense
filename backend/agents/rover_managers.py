@@ -36,6 +36,7 @@ import asyncio
 import json
 import logging
 
+import weave
 from crewai import Agent, Crew, LLM, Process, Task
 from crewai.tools import tool
 
@@ -172,11 +173,15 @@ async def _bridge_findings(rover_id: str, vision: dict) -> None:
     criteria = vision.get("criteria", "")
     for f in vision.get("findings", []):
         desc = f.get("description", "")
+        # Preview = first sentence (clean break), full text on card expand.
+        summary = desc.split(". ")[0].strip()
+        if summary and not summary.endswith("."):
+            summary += "."
         await findings_state.add_finding(
             {
                 "rover_id": rover_id,
                 "label": f.get("label", "Unknown object"),
-                "summary": desc[:140],
+                "summary": summary,
                 "description": desc,
                 "confidence": f.get("confidence"),
                 "photo": photo,
@@ -185,6 +190,7 @@ async def _bridge_findings(rover_id: str, vision: dict) -> None:
         )
 
 
+@weave.op()
 async def run_rover_cycle(rover_id: str) -> dict | None:
     """Run one full subagent cycle for a rover and bridge any new findings.
 

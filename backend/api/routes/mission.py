@@ -4,32 +4,31 @@ Owner: Person 2 (Backend API + Redis + WebSocket)
 """
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from config import settings, ROVER_IDS
+from config import ROVER_IDS
 from redis_layer import mission_state
 import dev_capture
+import snapshot_capture
 
+log = logging.getLogger("roverswarm.mission")
 router = APIRouter()
 
-
-# Workflow stages surfaced to the UI checklist above the chat box.
-# TODO [Person 1/Person 2]: drive these from real crew progress events.
 WORKFLOW_STAGES = [
     "Received mission prompt",
     "Saved prompt to shared memory (Redis)",
     "Splitting map into agent zones",
-    "Dispatching mission to Agent N1",
-    "Dispatching mission to Agent N2",
+] + [f"Dispatching mission to Agent N{i+1}" for i in range(len(ROVER_IDS))] + [
     "Agents exploring & capturing",
 ]
 
 
 class MissionStartRequest(BaseModel):
-    """Scientist's mission input."""
     goal: str
-    criteria: str = ""  # e.g. "ping me if you see anything blue or circular"
+    criteria: str = ""
 
 
 async def _publish_stage(index: int) -> None:
@@ -37,54 +36,49 @@ async def _publish_stage(index: int) -> None:
     await redis_client.publish("mission:progress", {"type": "stage", "index": index})
 
 
+def _stop_capture() -> None:
+    snapshot_capture.stop()
+    dev_capture.stop()
+
+
 @router.post("/start")
 async def start_mission(req: MissionStartRequest):
-    """Begin a mission.
+    _stop_capture()
 
-    Stores the prompt in Redis (where the two per-robot agents read it) and, in
-    simulation mode, kicks off the synthetic capture loop so frames stream to the
-    UI nodes.
-
-    TODO [Person 1]: launch the CrewAI orchestrator here (get_crew()) so real
-    agents pick up mission:goal / mission:criteria and begin exploring.
-    """
-    # Stage 0: prompt received
     await _publish_stage(0)
-
     record = await mission_state.set_mission(req.goal, req.criteria)
-
-    # Stage 1: saved to Redis
     await _publish_stage(1)
-
-    # Stage 2: zone splitting (placeholder — real split not yet implemented)
     await _publish_stage(2)
 
     rover_ids = list(ROVER_IDS)
-
-    # Stage 3 + 4: dispatching to each rover
-    for i, _ in enumerate(rover_ids):
+    for i in range(len(rover_ids)):
         await _publish_stage(3 + i)
 
-    if settings.SIMULATION_MODE:
+    # Real phone camera if a STREAM_URL is configured; else SVG placeholders.
+    if snapshot_capture.any_stream_configured(rover_ids):
+        snapshot_capture.start(rover_ids)
+        capture_mode = "live"
+    else:
         dev_capture.start(rover_ids)
+        capture_mode = "simulation"
+    log.info("Mission started in %s capture mode for %s", capture_mode, rover_ids)
 
     return {
         "status": "running",
         "mission": record,
         "rovers": rover_ids,
         "stages": WORKFLOW_STAGES,
+        "capture_mode": capture_mode,
     }
 
 
 @router.post("/stop")
 async def stop_mission():
-    """Stop the current mission."""
-    dev_capture.stop()
+    _stop_capture()
     await mission_state.set_status("idle")
     return {"status": "idle"}
 
 
 @router.get("/status")
 async def mission_status():
-    """Return mission goal/criteria/status."""
     return await mission_state.get_mission()

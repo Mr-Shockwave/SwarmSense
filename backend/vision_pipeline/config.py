@@ -32,7 +32,7 @@ class Settings:
 
     # --- Weave / W&B ---
     WANDB_API_KEY: str = os.getenv("WANDB_API_KEY", "")
-    WEAVE_PROJECT: str = os.getenv("WEAVE_PROJECT", "SwarmSense")
+    WEAVE_PROJECT: str = os.getenv("WEAVE_PROJECT", "roverswarm")
 
     # --- Execution mode ---
     SIMULATION_MODE: bool = _get_bool("SIMULATION_MODE", True)
@@ -81,7 +81,7 @@ def _rover_ids() -> tuple:
 ROVER_IDS: tuple = _rover_ids()
 
 # Photo cadence (seconds) — vision pipeline trigger
-PHOTO_INTERVAL_SECONDS: float = 2.5
+PHOTO_INTERVAL_SECONDS: float = 5.5
 
 # Red zone default radius (cm) broadcast on obstacle hit
 REDZONE_RADIUS_CM: int = 20

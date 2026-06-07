@@ -18,6 +18,7 @@ import json
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
+import weave
 from crewai import Agent, Crew, LLM, Process, Task
 
 from vision_pipeline.analyzer import analyze_photo
@@ -78,6 +79,18 @@ def _latest_frame(images_key: str) -> str | None:
     return raw if isinstance(raw, str) else None
 
 
+def _raw_b64(photo: str) -> str:
+    """Strip a `data:<mime>;base64,` prefix, returning the raw base64 payload.
+
+    Frames are cached as full data URIs (rover_state.add_image), but the
+    perceptual hash and content-addressed image store need the raw base64 —
+    feeding the data URI to base64.b64decode silently corrupts the hash.
+    """
+    if photo.startswith("data:") and "," in photo:
+        return photo.split(",", 1)[1]
+    return photo
+
+
 # ── Frame dedup (perceptual hash) ────────────────────────────────────────────
 
 DEDUP_HAMMING_THRESHOLD = 6   # dHash bit distance; <= this => treat as same scene
@@ -119,6 +132,7 @@ def _store_image(image_id: str, photo_b64: str) -> None:
 # ── Runtimes (used by --dry-run and as reference behaviour) ──────────────────
 
 
+@weave.op()
 def run_vision_subagent(rover_id: str) -> dict[str, Any]:
     """Analyze the rover's latest frame against mission criteria.
 
@@ -128,8 +142,10 @@ def run_vision_subagent(rover_id: str) -> dict[str, Any]:
     criteria = redis_get_raw("mission:criteria") or "(no criteria)"
     images_key = f"{rover_id}:images"
     photo_b64 = _latest_frame(images_key)
+    # Frames are cached as data URIs; hash + store the raw base64 payload.
+    raw_b64 = _raw_b64(photo_b64) if photo_b64 else None
 
-    phash = _perceptual_hash(photo_b64) if photo_b64 else None
+    phash = _perceptual_hash(raw_b64) if raw_b64 else None
     prev = redis_get_raw(f"{rover_id}:vision:state") or {}
     is_duplicate = (
         phash is not None
@@ -148,8 +164,9 @@ def run_vision_subagent(rover_id: str) -> dict[str, Any]:
         if photo_b64:
             vision_result = _run_sync(analyze_photo(photo_b64, str(criteria)))
             findings = vision_result.get("findings", [])
-        if photo_b64 and image_id:
-            _store_image(image_id, photo_b64)
+        # Store the raw base64 (no data-uri prefix); _bridge_findings re-wraps it.
+        if raw_b64 and image_id:
+            _store_image(image_id, raw_b64)
         redis_set_raw(
             f"{rover_id}:vision:state",
             {"hash": phash, "image_id": image_id, "criteria": criteria},
@@ -173,6 +190,7 @@ def run_vision_subagent(rover_id: str) -> dict[str, Any]:
     return result
 
 
+@weave.op()
 def run_research_subagent(rover_id: str) -> dict[str, Any]:
     """Summarize vision findings for this rover (stub — no LLM required for dry-run)."""
     criteria = redis_get_raw("mission:criteria") or "(no criteria)"
@@ -192,13 +210,23 @@ def run_research_subagent(rover_id: str) -> dict[str, Any]:
 
     summary = ""
     if findings:
-        labels = [f.get("label", "object") for f in findings]
+        # Build a richer, still-deterministic summary from the vision descriptions
+        # themselves (no extra LLM call → no added latency). Each candidate gets a
+        # one-line gist drawn from its label + the first sentence of its description.
+        lines = []
+        for f in findings:
+            label = f.get("label", "object")
+            desc = (f.get("description") or "").strip()
+            gist = desc.split(". ")[0].strip().rstrip(".") if desc else ""
+            conf = f.get("confidence")
+            conf_str = f" (~{round(conf * 100)}% conf)" if isinstance(conf, (int, float)) else ""
+            lines.append(f"- {label}{conf_str}: {gist}" if gist else f"- {label}{conf_str}")
         summary = (
-            f"Research summary for {rover_id}: detected {len(findings)} candidate(s) "
-            f"matching criteria {criteria!r}: {', '.join(labels)}."
+            f"Research summary for {rover_id} — {len(findings)} candidate(s) matching "
+            f"{criteria!r}:\n" + "\n".join(lines)
         )
         if error_note:
-            summary += f" Caveat from error analysis: {error_note}"
+            summary += f"\nCaveat from error analysis: {error_note}"
 
     result = {
         "agent": subagent_label(rover_id, "research"),
@@ -214,6 +242,7 @@ def run_research_subagent(rover_id: str) -> dict[str, Any]:
     return result
 
 
+@weave.op()
 def run_error_subagent(rover_id: str) -> dict[str, Any]:
     """Diagnose the latest faults logged for this rover (stub)."""
     errors = redis_get_raw(f"{rover_id}:errors") or []
@@ -261,11 +290,20 @@ def build_vision_subagent(rover_id: str, llm: LLM | None = None) -> Agent:
 def build_research_subagent(rover_id: str, llm: LLM | None = None) -> Agent:
     return Agent(
         role=f"{rover_id} Research Specialist",
-        goal=f"Produce contextual analysis of {rover_id}'s vision findings",
+        goal=(
+            f"Turn {rover_id}'s raw vision findings into a clear, scientist-facing "
+            "summary that states what was found, how confidently, and any caveats — "
+            "without adding claims the vision data does not support."
+        ),
         backstory=(
-            f"You are the field researcher for {rover_id}. "
-            f"Read {rover_id}:vision:findings or {rover_id}:vision:last and mission:criteria; "
-            "summarize detected objects for the scientist."
+            f"You are the field researcher for {rover_id}. You read "
+            f"{rover_id}:vision:findings (fall back to {rover_id}:vision:last) plus "
+            "mission:criteria, and you fold in the error analyst's latest diagnosis "
+            "when one is present. Write a brief, well-structured summary: one short "
+            "line per detected object (label, confidence, and its key distinguishing "
+            "feature), followed by any error caveat. Be precise and economical — never "
+            "speculate beyond the findings, and keep it short so the report stays "
+            "low-latency. If there are no findings, say so plainly in one line."
         ),
         tools=SUBAGENT_TOOLS,
         llm=llm or _llm(),

@@ -12,9 +12,13 @@ Weave should trace:
 """
 from __future__ import annotations
 
-# import weave
+import logging
+
+import weave
 
 from config import settings
+
+log = logging.getLogger("roverswarm.weave")
 
 _initialized = False
 
@@ -22,16 +26,18 @@ _initialized = False
 def init_weave() -> None:
     """Initialize Weave once at startup.
 
-    TODO [Person 1]:
-      - weave.init(settings.WEAVE_PROJECT)
-      - Register custom scorers (see below).
+    Calls weave.init(WEAVE_PROJECT) so every @weave.op() in the codebase (vision
+    analysis, the per-rover cycle, the subagents) is traced — including per-call
+    latency, which Weave records automatically for each op. Requires WANDB_API_KEY
+    to be set; main.py wraps this in try/except so a missing key degrades to "no
+    tracing" rather than crashing startup.
     """
     global _initialized
     if _initialized:
         return
-    # weave.init(settings.WEAVE_PROJECT)
+    weave.init(settings.WEAVE_PROJECT)
     _initialized = True
-    raise NotImplementedError("init_weave: call weave.init() (Person 1)")
+    log.info("Weave tracing initialized (project=%s)", settings.WEAVE_PROJECT)
 
 
 # ─────────────────────────────────────────────────────────────

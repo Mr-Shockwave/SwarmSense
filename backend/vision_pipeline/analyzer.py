@@ -20,7 +20,17 @@ from config import settings
 
 class Finding(BaseModel):
     label: str = Field(description="Short name of the matching object, e.g. 'red cube'.")
-    description: str = Field(description="What it looks like and roughly where it sits in the frame.")
+    description: str = Field(
+        description=(
+            "A grounded 4-5 sentence description of THIS object as it appears in the "
+            "frame. Cover, in order: (1) what the object is and why it satisfies the "
+            "criteria; (2) its distinguishing visual features — colour, shape, size "
+            "relative to the scene, texture, condition; (3) where it sits in the frame "
+            "(e.g. lower-left foreground) and what is immediately around it; (4) the "
+            "main cue driving your confidence. Describe ONLY what is visibly present — "
+            "never guess at occluded parts, materials, or context you cannot see."
+        )
+    )
     confidence: float = Field(ge=0.0, le=1.0, description="Likelihood this object satisfies the criteria.")
 
 
@@ -30,10 +40,16 @@ class VisionResult(BaseModel):
 
 _SYSTEM = (
     "You are a planetary rover's vision analyst. Inspect the image and report ONLY "
-    "objects that satisfy the scientist's criteria. Emit one finding per matching "
-    "object, with a calibrated confidence in [0, 1]. If nothing in the frame matches "
-    "the criteria, return an empty findings list. Never invent objects that are not "
-    "clearly visible."
+    "objects that clearly satisfy the scientist's criteria. Emit one finding per "
+    "matching object, each with a calibrated confidence in [0, 1].\n\n"
+    "For every finding, write a balanced 4-5 sentence description that is concrete and "
+    "fully grounded in what is visible: identify the object, its distinguishing visual "
+    "features, its location in the frame and surroundings, and the cue behind your "
+    "confidence. Be specific but do not pad — no speculation, no generic filler.\n\n"
+    "Strict rules: never invent objects, attributes, or context that are not clearly "
+    "visible; if you are unsure whether something matches, lower the confidence rather "
+    "than embellish; if nothing in the frame matches the criteria, return an empty "
+    "findings list."
 )
 
 
@@ -58,7 +74,6 @@ async def analyze_photo(photo_b64: str, criteria: str) -> dict:
             mime = header.split(";")[0].split(":")[1]
         except (ValueError, IndexError):
             return {"findings": []}
-        # SVG is a placeholder from dev_capture — skip rather than 400.
         if "svg" in mime:
             return {"findings": []}
         image_url = f"data:{mime};base64,{raw}"
