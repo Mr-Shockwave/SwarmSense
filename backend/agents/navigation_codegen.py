@@ -269,5 +269,12 @@ def build_navigation_system_prompt(robot: str) -> str:
     return _NAVIGATION_SYSTEM_TEMPLATE.format(robot=key, **profile)
 
 
-# Pre-rendered prompt for the first robot.
+# Pre-rendered prompts per robot.
 ALPHA_SYSTEM_PROMPT = build_navigation_system_prompt("alpha")
+BETA_SYSTEM_PROMPT = build_navigation_system_prompt("beta")
+
+# Convenience lookup by canonical rover id (rover1=alpha, rover2=beta).
+SYSTEM_PROMPT_BY_ROVER = {
+    profile["rover_id"]: build_navigation_system_prompt(label)
+    for label, profile in ROBOT_PROFILES.items()
+}
