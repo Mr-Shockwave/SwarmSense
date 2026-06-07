@@ -21,9 +21,19 @@ export async function getMapState() {
   return data;
 }
 
+export async function stopMission() {
+  const { data } = await client.post("/mission/stop");
+  return data;
+}
+
 export async function getRoversStatus() {
   const { data } = await client.get("/rovers/status");
   return data;
+}
+
+export async function getRoverImages(roverId, limit = 100) {
+  const { data } = await client.get(`/rovers/${roverId}/images`, { params: { limit } });
+  return data; // { rover_id, count, frames: [{ ts, photo, caption, coord }] }
 }
 
 export async function approveTarget({ target_id, decision, x, y, description }) {

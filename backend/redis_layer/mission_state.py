@@ -11,25 +11,42 @@ Keys:
 """
 from __future__ import annotations
 
-# from . import client
+import time
+
+from . import client
 
 
-async def set_mission(goal: str, criteria: str) -> None:
+async def set_mission(goal: str, criteria: str) -> dict:
     """Store mission goal + criteria and mark status running.
 
-    TODO [Person 2].
+    The scientist's prompt lands in Redis here; the two per-robot agents read it
+    from `mission:goal` / `mission:criteria` (and the published mission channel).
     """
-    raise NotImplementedError("set_mission (Person 2)")
+    record = {"goal": goal, "criteria": criteria, "status": "running", "ts": time.time()}
+    await client.set("mission:goal", goal)
+    await client.set("mission:criteria", criteria)
+    await client.set("mission:status", "running")
+    await client.set("mission:record", record)
+    # Notify the rover agents that a new mission prompt is available.
+    await client.publish("rover:comms", {"type": "mission", **record})
+    return record
 
 
 async def get_mission() -> dict:
-    """TODO [Person 2]: return {goal, criteria, status}."""
-    raise NotImplementedError("get_mission (Person 2)")
+    """Return {goal, criteria, status}."""
+    record = await client.get("mission:record")
+    if record:
+        return record
+    return {
+        "goal": await client.get("mission:goal"),
+        "criteria": await client.get("mission:criteria"),
+        "status": await client.get("mission:status") or "idle",
+    }
 
 
 async def set_status(status: str) -> None:
-    """TODO [Person 2]: idle | running | complete."""
-    raise NotImplementedError("set_status (Person 2)")
+    """idle | running | complete."""
+    await client.set("mission:status", status)
 
 
 async def add_approved_target(target: dict) -> None:

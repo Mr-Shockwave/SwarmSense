@@ -4,6 +4,8 @@ Owner: Person 2 (Backend API + Redis + WebSocket)
 """
 from __future__ import annotations
 
+from typing import Optional
+
 from fastapi import APIRouter
 from pydantic import BaseModel
 
@@ -20,7 +22,7 @@ class ApprovalRequest(BaseModel):
     decision: str  # "collect" | "ignore" | "investigate"
     x: int
     y: int
-    description: str | None = None
+    description: Optional[str] = None
 
 
 @router.post("/approve")

@@ -9,8 +9,41 @@ Keys:
 """
 from __future__ import annotations
 
-# from . import client
+import time
+
+from . import client
 # from .pubsub import publish, CHANNEL_ROVER1_POSITION, CHANNEL_ROVER2_POSITION
+
+
+# ─────────────────────────────────────────────────────────────
+# Captured frames — photos a rover takes every ~5-6s. The UI polls these per
+# node (N1, N2, ...) and renders them one-by-one in the expandable sections.
+#   Key: {rover_id}:images  (list, newest first)
+# ─────────────────────────────────────────────────────────────
+
+def _images_key(rover_id: str) -> str:
+    return f"{rover_id}:images"
+
+
+async def add_image(rover_id: str, photo: str, caption: str = "", coord: dict | None = None) -> dict:
+    """Append a captured frame for a rover (newest first)."""
+    frame = {
+        "ts": time.time(),
+        "photo": photo,        # base64 data-uri or raw base64
+        "caption": caption,
+        "coord": coord or {},
+    }
+    await client.lpush(_images_key(rover_id), frame)
+    return frame
+
+
+async def get_images(rover_id: str, limit: int = 100) -> list[dict]:
+    """Return a rover's captured frames, newest first."""
+    return await client.lrange(_images_key(rover_id), 0, limit - 1)
+
+
+async def count_images(rover_id: str) -> int:
+    return await client.llen(_images_key(rover_id))
 
 
 async def set_position(rover_id: str, x: int, y: int, heading: float) -> None:
