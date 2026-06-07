@@ -12,12 +12,14 @@ function resolveUrl() {
   return `${proto}//${window.location.host}/ws`;
 }
 
-export default function useLiveSocket({ onFrame, onFinding, onStatusChange } = {}) {
+export default function useLiveSocket({ onFrame, onFinding, onStage, onStatusChange } = {}) {
   const onFrameRef = useRef(onFrame);
   const onFindingRef = useRef(onFinding);
+  const onStageRef = useRef(onStage);
   const onStatusRef = useRef(onStatusChange);
   onFrameRef.current = onFrame;
   onFindingRef.current = onFinding;
+  onStageRef.current = onStage;
   onStatusRef.current = onStatusChange;
 
   useEffect(() => {
@@ -50,6 +52,7 @@ export default function useLiveSocket({ onFrame, onFinding, onStatusChange } = {
         }
         if (msg.type === "frame") onFrameRef.current?.(msg);
         else if (msg.type === "finding") onFindingRef.current?.(msg);
+        else if (msg.type === "stage") onStageRef.current?.(msg);
       };
 
       ws.onclose = () => {

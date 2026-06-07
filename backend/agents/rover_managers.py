@@ -222,6 +222,23 @@ async def run_fleet_cycle(rover_ids: tuple[str, ...] = ROVER_IDS) -> list:
 # ── event-driven trigger ──────────────────────────────────────────────────────
 
 
+async def _publish_stage(index: int) -> None:
+    from redis_layer import client as redis_client
+    await redis_client.publish("mission:progress", {"type": "stage", "index": index})
+
+
+_first_cycle_done = False
+
+
+async def _on_frame(rover_id: str) -> None:
+    """Fires stage 5 on the very first frame, then runs the cycle."""
+    global _first_cycle_done
+    if not _first_cycle_done:
+        _first_cycle_done = True
+        await _publish_stage(5)
+    await run_rover_cycle(rover_id)
+
+
 async def agent_frame_listener() -> None:
     """Subscribe to `rover:frames` and fire a cycle for each new frame.
 
@@ -238,7 +255,7 @@ async def agent_frame_listener() -> None:
             async for _channel, data in client.subscribe("rover:frames"):
                 rover_id = data.get("rover_id") if isinstance(data, dict) else None
                 if rover_id:
-                    asyncio.create_task(run_rover_cycle(rover_id))
+                    asyncio.create_task(_on_frame(rover_id))
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001

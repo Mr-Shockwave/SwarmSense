@@ -11,7 +11,7 @@ import FindingPing from "./components/Findings/FindingPing.jsx";
 import CopilotOverlay from "./components/CopilotOverlay.jsx";
 import useFindings from "./hooks/useFindings.js";
 import useLiveSocket from "./hooks/useLiveSocket.js";
-import { startMission, stopMission, getRoverImages } from "./services/api.js";
+import { startMission, stopMission, getRoverImages, resetApp } from "./services/api.js";
 
 const INITIAL_NODES = [
   { id: "rover1", label: "N1", name: "Rover 1" },
@@ -50,7 +50,7 @@ export default function App() {
   const [ping, setPing] = useState(null);
 
   const pollRef = useRef(null);
-  const stageTimerRef = useRef(null);
+  const stageTimerRef = useRef(null); // kept for fallback only
 
   // --- Findings: poll + ping on new ones ---
   const handleNewFinding = useCallback((finding) => {
@@ -101,6 +101,9 @@ export default function App() {
       ).catch(() => {});
     },
     onFinding: () => refreshFindings(),
+    onStage: ({ index }) => {
+      if (typeof index === "number") setStageProgress(index);
+    },
   });
 
   useEffect(() => {
@@ -111,42 +114,35 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [running]);
 
-  const animateStages = useCallback((count) => {
-    clearInterval(stageTimerRef.current);
-    setStageProgress(0);
-    stageTimerRef.current = setInterval(() => {
-      setStageProgress((p) => {
-        if (p >= count - 1) {
-          clearInterval(stageTimerRef.current);
-          return count - 1;
-        }
-        return p + 1;
-      });
-    }, 850);
-  }, []);
-
   const launchMission = useCallback(async ({ goal, criteria }) => {
     if (!goal?.trim()) return;
     setActiveTab("agents");
     setRunning(true);
+    setStageProgress(0);
     setOpenNodes(Object.fromEntries(nodes.map((n) => [n.id, true])));
     try {
       const res = await startMission({ goal: goal.trim(), criteria: (criteria || goal).trim() });
       const s = res?.stages?.length ? res.stages : FALLBACK_STAGES;
       setStages(s);
-      animateStages(s.length);
     } catch {
       setStages(FALLBACK_STAGES);
-      animateStages(FALLBACK_STAGES.length);
     }
-  }, [nodes, animateStages]);
+  }, [nodes]);
 
   const handleSubmit = () => launchMission({ goal: prompt, criteria: prompt });
 
   const handleNewMission = async () => {
     clearInterval(pollRef.current);
-    clearInterval(stageTimerRef.current);
     try { await stopMission(); } catch { /* ignore */ }
+    setRunning(false);
+    setPrompt("");
+    setImages({});
+    setStageProgress(0);
+  };
+
+  const handleReset = async () => {
+    clearInterval(pollRef.current);
+    try { await resetApp(); } catch { /* ignore */ }
     setRunning(false);
     setPrompt("");
     setImages({});
@@ -193,6 +189,7 @@ export default function App() {
                   stages={stages}
                   stageProgress={stageProgress}
                   onNewMission={handleNewMission}
+                  onReset={handleReset}
                 />
               )}
 

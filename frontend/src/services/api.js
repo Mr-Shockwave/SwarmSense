@@ -67,3 +67,8 @@ export async function setFindingStatus(findingId, status) {
   const { data } = await client.post(`/findings/${findingId}/status`, { status });
   return data;
 }
+
+export async function resetApp() {
+  const { data } = await client.post("/admin/reset");
+  return data;
+}

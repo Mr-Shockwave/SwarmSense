@@ -18,7 +18,7 @@ router = APIRouter()
 
 # Redis pub/sub channels the bridge forwards to the UI. Each carries a JSON dict
 # with a "type" field ("frame" | "finding") that the frontend switches on.
-LIVE_CHANNELS = ("rover:frames", "scientist:ping")
+LIVE_CHANNELS = ("rover:frames", "scientist:ping", "mission:progress")
 
 
 class ConnectionManager:
