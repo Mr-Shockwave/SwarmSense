@@ -7,10 +7,8 @@ cadence. Uses OpenCV to read the rover's phone camera MJPEG/RTSP stream, grabs
 the freshest frame, downscales + JPEG-compresses it, and returns base64 for
 GPT-4o vision.
 
-The stream URL is read from a per-rover env var (kept out of the repo):
-    ROVER1_STREAM_URL=http://<phone-ip>:8080/video
-    ROVER2_STREAM_URL=http://<phone-ip>:8080/video
-i.e. f"{rover_id.upper()}_STREAM_URL".
+The stream URL is read from a single env var (kept out of the repo):
+    STREAM_URL=http://<phone-ip>:8080/video
 
 capture.py stays decoupled from Redis/vision: it captures and invokes on_photo.
 Whoever wires on_photo decides whether frames go to Redis ({rover_id}:images)
@@ -40,15 +38,14 @@ BUFFER_FLUSH = 4           # grab() calls to drop stale buffered frames
 _caps: dict[str, cv2.VideoCapture] = {}
 
 
-def _stream_url(rover) -> str:
-    rover_id = getattr(rover, "rover_id", None)
-    if not rover_id:
-        raise RuntimeError("rover has no rover_id; cannot resolve its stream URL env var")
-    env_var = f"{rover_id.upper()}_STREAM_URL"
-    url = os.getenv(env_var)
+STREAM_URL_ENV = "STREAM_URL"
+
+
+def _stream_url(rover=None) -> str:
+    url = os.getenv(STREAM_URL_ENV)
     if not url:
         raise RuntimeError(
-            f"{env_var} is not set (expected the phone camera stream, "
+            f"{STREAM_URL_ENV} is not set (expected the phone camera stream, "
             "e.g. http://<phone-ip>:8080/video)"
         )
     return url
