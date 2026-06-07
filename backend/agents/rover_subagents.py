@@ -13,11 +13,14 @@ hold tools in hierarchical crews).
 """
 from __future__ import annotations
 
+import asyncio
 import json
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from crewai import Agent, Crew, LLM, Process, Task
 
+from agents.vision import analyze_photo
 from config import settings
 from tools.redis_tools import (
     get_sync_redis,
@@ -42,27 +45,66 @@ def subagent_label(rover_id: str, role: str) -> str:
     return f"{rover_id}:{role}"
 
 
-# ── Stub runtimes (used by --dry-run and as reference behaviour) ─────────────
+def _run_sync(coro: Any) -> Any:
+    """Run an async coroutine from sync code, even if a loop is already running."""
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    # Already inside a running loop: hop to a worker thread with its own loop.
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(lambda: asyncio.run(coro)).result()
+
+
+def _latest_frame(images_key: str) -> str | None:
+    """Most recent cached base64 frame for a rover, or None if none cached."""
+    try:
+        client = get_sync_redis()
+        raw = client.lindex(images_key, -1)
+    except Exception:  # noqa: BLE001
+        return None
+    if raw is None:
+        return None
+    if isinstance(raw, bytes):
+        raw = raw.decode("utf-8", "ignore")
+    # Frame may be a bare base64 string or wrapped in JSON ({"b64": ...}).
+    try:
+        obj = json.loads(raw)
+    except (ValueError, TypeError):
+        return raw
+    if isinstance(obj, dict):
+        return obj.get("b64") or obj.get("image")
+    return raw if isinstance(raw, str) else None
+
+
+# ── Runtimes (used by --dry-run and as reference behaviour) ──────────────────
 
 
 def run_vision_subagent(rover_id: str) -> dict[str, Any]:
-    """Analyze mission criteria / latest photo for one rover (stub)."""
+    """Analyze the rover's latest frame against mission criteria.
+
+    Calls the shared GPT-4o vision primitive (agents.vision.analyze_photo) and
+    emits the canonical findings shape. Empty `findings` => target not found.
+    """
     criteria = redis_get_raw("mission:criteria") or "(no criteria)"
     images_key = f"{rover_id}:images"
-    photo_count = 0
-    try:
-        client = get_sync_redis()
-        if hasattr(client, "llen"):
-            photo_count = int(client.llen(images_key))
-    except Exception:  # noqa: BLE001
-        photo_count = 0
+    photo_b64 = _latest_frame(images_key)
+
+    findings: list[dict[str, Any]] = []
+    if photo_b64:
+        vision = _run_sync(analyze_photo(photo_b64, str(criteria)))
+        findings = vision.get("findings", [])
+
     result = {
         "agent": subagent_label(rover_id, "vision"),
-        "match": False,
-        "description": f"Stub scan of criteria against {photo_count} cached frame(s)",
+        "match": bool(findings),   # derived, for existing consumers of vision:last
+        "findings": findings,      # canonical output
         "criteria": criteria,
+        "has_frame": photo_b64 is not None,
     }
     redis_set_raw(f"{rover_id}:vision:last", result)
+    if findings:
+        redis_publish_raw(f"{rover_id}:vision", result)
     return result
 
 
