@@ -28,6 +28,7 @@ httpx>=0.27
 numpy>=1.26
 pillow>=10.0          # photo encode/decode for the vision pipeline
 opencv-python-headless>=4.10  # phone camera stream capture (vision_pipeline/capture.py)
+bleak>=0.21           # BLE link to the Lego hubs (ble_sidecar.py)
 
 # --- Edge / Gemma (hardware mode; optional in sim) ---
 # TODO [Person 3]: pin the Gemma 2B runtime you choose (ollama client, llama-cpp-python,
