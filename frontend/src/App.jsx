@@ -10,6 +10,7 @@ import FindingsScreen from "./components/Findings/FindingsScreen.jsx";
 import FindingPing from "./components/Findings/FindingPing.jsx";
 import CopilotOverlay from "./components/CopilotOverlay.jsx";
 import useFindings from "./hooks/useFindings.js";
+import useLiveSocket from "./hooks/useLiveSocket.js";
 import { startMission, stopMission, getRoverImages } from "./services/api.js";
 
 const INITIAL_NODES = [
@@ -56,7 +57,7 @@ export default function App() {
     setPing(finding);
     setUnseenFindings((n) => n + 1);
   }, []);
-  const { findings } = useFindings({ onNew: handleNewFinding });
+  const { findings, refresh: refreshFindings } = useFindings({ onNew: handleNewFinding });
 
   const frameCounts = Object.fromEntries(
     nodes.map((n) => [n.id, (images[n.id] || []).length])
@@ -88,6 +89,19 @@ export default function App() {
     );
     setImages((prev) => ({ ...prev, ...Object.fromEntries(results) }));
   }, [nodes, images]);
+
+  // --- Live updates: WS message => instant refetch (polling stays as fallback) ---
+  useLiveSocket({
+    onFrame: ({ rover_id }) => {
+      if (!running) return;
+      if (!rover_id) { pollImages(); return; }
+      // Only refetch the rover that got a new frame, not both.
+      getRoverImages(rover_id).then((data) =>
+        setImages((prev) => ({ ...prev, [rover_id]: data.frames || [] }))
+      ).catch(() => {});
+    },
+    onFinding: () => refreshFindings(),
+  });
 
   useEffect(() => {
     if (!running) return;

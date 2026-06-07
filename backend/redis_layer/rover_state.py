@@ -34,6 +34,8 @@ async def add_image(rover_id: str, photo: str, caption: str = "", coord: dict | 
         "coord": coord or {},
     }
     await client.lpush(_images_key(rover_id), frame)
+    # Live notify: tell connected UIs a new frame landed so they refetch instantly.
+    await client.publish("rover:frames", {"type": "frame", "rover_id": rover_id})
     return frame
 
 

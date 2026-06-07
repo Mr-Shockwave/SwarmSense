@@ -148,6 +148,29 @@ async def publish(channel: str, message: Any) -> None:
         _warn_once(exc)
 
 
+async def subscribe(*channels: str):
+    """Async-generator that yields (channel, decoded_message) for each pub/sub
+    message on the given channels. Never raises fatally — on a connection error
+    it simply stops yielding so the caller's loop can retry.
+    """
+    pubsub = None
+    try:
+        pubsub = get_redis().pubsub()
+        await pubsub.subscribe(*channels)
+        async for message in pubsub.listen():
+            if message.get("type") != "message":
+                continue  # skip subscribe/unsubscribe confirmations
+            yield message.get("channel"), _decode(message.get("data"))
+    except Exception as exc:  # noqa: BLE001
+        _warn_once(exc)
+    finally:
+        if pubsub is not None:
+            try:
+                await pubsub.aclose()
+            except Exception:  # noqa: BLE001
+                pass
+
+
 async def close() -> None:
     global _redis
     if _redis is not None:
