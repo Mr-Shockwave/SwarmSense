@@ -188,6 +188,14 @@ def run_research_subagent(rover_id: str) -> dict[str, Any]:
         vision_data = {"findings": last.get("findings", []), "image_id": last.get("image_id")}
 
     findings = vision_data.get("findings", [])
+
+    # Cross-feed: fold in the error subagent's latest diagnosis so a fault (e.g.
+    # an occluded camera) can qualify the research summary. This is the
+    # subagent->subagent comm on the deterministic path; the CrewAI path does the
+    # same via Task(context=[vision_task, error_task]) in rover_managers.py.
+    error_data = redis_get_raw(f"{rover_id}:error:last") or {}
+    error_note = error_data.get("diagnosis", "") if error_data.get("error_count") else ""
+
     summary = ""
     if findings:
         labels = [f.get("label", "object") for f in findings]
@@ -195,6 +203,8 @@ def run_research_subagent(rover_id: str) -> dict[str, Any]:
             f"Research summary for {rover_id}: detected {len(findings)} candidate(s) "
             f"matching criteria {criteria!r}: {', '.join(labels)}."
         )
+        if error_note:
+            summary += f" Caveat from error analysis: {error_note}"
 
     result = {
         "agent": subagent_label(rover_id, "research"),
@@ -202,6 +212,7 @@ def run_research_subagent(rover_id: str) -> dict[str, Any]:
         "summary": summary or f"No findings to research for {rover_id}.",
         "criteria": criteria,
         "image_id": vision_data.get("image_id"),
+        "error_context": error_note,
     }
     redis_set_raw(f"{rover_id}:research:last", result)
     if findings:
