@@ -38,10 +38,12 @@ class Settings:
     SIMULATION_MODE: bool = _get_bool("SIMULATION_MODE", True)
 
     # --- Agents ---
-    # When true, a background listener runs a subagent cycle on every new frame
-    # (event-driven on rover:frames). Set AGENTS_AUTORUN=false to disable (e.g.
-    # to avoid per-frame vision/LLM cost while developing the UI).
     AGENTS_AUTORUN: bool = _get_bool("AGENTS_AUTORUN", True)
+
+    # --- Dev helpers ---
+    # Flush Redis on every backend startup. Useful during development so each
+    # restart is a clean slate. Set to false in production / shared envs.
+    FLUSH_ON_STARTUP: bool = _get_bool("FLUSH_ON_STARTUP", False)
 
     # --- Ports ---
     BACKEND_PORT: int = int(os.getenv("BACKEND_PORT", "8000"))
