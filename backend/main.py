@@ -1,0 +1,110 @@
+"""FastAPI application entry point for Project RoverSwarm.
+
+Owner: Person 2 (Backend API + Redis + WebSocket)
+
+On startup this:
+  1. Initializes Weave  (weave.init)               -> Person 1 provides tracer
+  2. Connects to Redis                              -> redis_layer.client
+  3. Initializes the map grid as fully unexplored   -> redis_layer.map_state
+  4. Determines simulation vs hardware mode         -> config.SIMULATION_MODE
+  5. Logs which mode is active
+"""
+from __future__ import annotations
+
+import logging
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from config import settings
+
+# Routers
+from api.routes import mission, map as map_routes, rovers, targets, copilot
+from api import websocket as ws
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("roverswarm")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Startup / shutdown lifecycle."""
+    # --- 1. Weave ---
+    # TODO [Person 1]: call weave_tracing.tracer.init_weave() here.
+    try:
+        from weave_tracing.tracer import init_weave
+        init_weave()
+        logger.info("Weave initialized (project=%s)", settings.WEAVE_PROJECT)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Weave init skipped/failed: %s", exc)
+
+    # --- 2. Redis ---
+    # TODO [Person 2]: establish the Redis connection and store it on app.state.
+    try:
+        from redis_layer.client import get_redis, ping
+        app.state.redis = get_redis()
+        await ping()
+        logger.info("Redis connected: %s", settings.REDIS_URL)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Redis connect failed: %s", exc)
+
+    # --- 3. Initialize map grid as fully unexplored ---
+    # TODO [Person 2]: call map_state.initialize_grid().
+    try:
+        from redis_layer.map_state import initialize_grid
+        await initialize_grid()
+        logger.info("Map grid initialized as unexplored")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Map grid init failed: %s", exc)
+
+    # --- 4 & 5. Mode ---
+    mode = "SIMULATION" if settings.SIMULATION_MODE else "HARDWARE"
+    logger.info("RoverSwarm starting in %s mode", mode)
+
+    # TODO [Person 2]: start background Pub/Sub listeners (redis_layer.pubsub).
+    # TODO [Person 3]: instantiate rovers (SimulatedRover vs HardwareRover) per mode.
+
+    yield
+
+    # --- Shutdown ---
+    # TODO [Person 2]: close Redis connection, cancel pubsub tasks, stop rovers.
+    logger.info("RoverSwarm shutting down")
+
+
+app = FastAPI(title="Project RoverSwarm", version="0.1.0", lifespan=lifespan)
+
+# --- CORS ---
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[settings.FRONTEND_ORIGIN, "http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# --- Routers ---
+# TODO [Person 2]: confirm prefixes/tags as routes are fleshed out.
+app.include_router(mission.router, prefix="/mission", tags=["mission"])
+app.include_router(map_routes.router, prefix="/map", tags=["map"])
+app.include_router(rovers.router, prefix="/rovers", tags=["rovers"])
+app.include_router(targets.router, prefix="/targets", tags=["targets"])
+app.include_router(copilot.router, prefix="/api", tags=["copilot"])
+
+# --- WebSocket ---
+app.include_router(ws.router, tags=["websocket"])
+
+
+@app.get("/health")
+async def health():
+    """Liveness probe."""
+    return {
+        "status": "ok",
+        "mode": "simulation" if settings.SIMULATION_MODE else "hardware",
+    }
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run("main:app", host="0.0.0.0", port=settings.BACKEND_PORT, reload=True)
