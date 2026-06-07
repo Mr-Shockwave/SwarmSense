@@ -1,6 +1,11 @@
-"""Vision agent — photo analysis against scientist criteria.
+"""Vision agent — mission-level photo review (scientist ping).
 
 Owner: Person 1 (Agent Logic + CrewAI + Weave)
+
+NOTE: Per-rover photo analysis during exploration is handled by each rover's
+vision *subagent* (agents/rover_subagents.py). This mission-level vision agent
+reviews cross-rover findings, triggers scientist:ping, and coordinates with the
+orchestrator — it does not replace {rover_id}:vision subagents.
 
 Responsibilities:
   - Receives a photo (every ~5-6s per rover) from the vision pipeline.

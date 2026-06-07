@@ -17,18 +17,29 @@ execution layer) — flip a single environment variable to switch.
                                           │
                             ┌─────────────┴─────────────┐
                             │   CrewAI Cloud Agent Crew  │
-                            │  orchestrator / vision /   │
-                            │  research / collection /   │
-                            │  debug                     │
+                            │  orchestrator / research / │
+                            │  debug  (+ mission vision  │
+                            │  & collection planner)     │
                             └─────────────┬─────────────┘
                                           │
                                     [ Redis Layer ]
                               KV state · Pub/Sub · error logs
                                           │
                               ┌───────────┴───────────┐
-                          [ Rover 1 ]             [ Rover 2 ]
-                          Gemma 2B (edge)         Gemma 2B (edge)
+                    [ Rover1Manager ]         [ Rover2Manager ]   ← GPT-4o, one per robot
+                       │    │    │               │    │    │
+                    vision nav collection     vision nav collection  ← subagents
+                       │                         │
+                  [ Rover 1 ]               [ Rover 2 ]
+                  Gemma 2B (edge)           Gemma 2B (edge)
 ```
+
+- **Mission crew** (`backend/agents/`): orchestrator splits zones and coordinates
+  fleet-wide; research and debug handle scientist pings and self-healing.
+- **Per-rover managers** (`rover_managers.py`): one GPT-4o manager per robot,
+  each supervising vision / navigation / collection subagents (`rover_subagents.py`).
+- **Edge Gemma** (`rovers/gemma_edge.py`): local advisory; final move authority
+  stays on the rover (see `TRUST_CLOUD_AGENT` in `config.py`).
 
 - **Backend:** Python (FastAPI)
 - **Agent framework:** CrewAI

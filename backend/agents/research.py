@@ -12,20 +12,34 @@ from __future__ import annotations
 
 from typing import AsyncIterator
 
-# from crewai import Agent
+from crewai import Agent, LLM
+
+from config import settings
+from tools.redis_tools import redis_get, redis_publish, redis_set
+
 # import weave
 
 
-def build_research_agent():
-    """Build the research CrewAI Agent.
+def _llm() -> LLM | None:
+    if not settings.OPENAI_API_KEY:
+        return None
+    return LLM(model=settings.OPENAI_ORCHESTRATION_MODEL, api_key=settings.OPENAI_API_KEY)
 
-    TODO [Person 1]:
-      role="Field Research Scientist"
-      goal="Produce a rich, sourced analysis of a detected object"
-      backstory="A curious polymath with web-search superpowers..."
-      tools=[gpt4o_vision_describe, web_search]
-    """
-    raise NotImplementedError("build_research_agent (Person 1)")
+
+def build_research_agent(llm: LLM | None = None) -> Agent:
+    """Build the mission-level research CrewAI Agent."""
+    return Agent(
+        role="Field Research Scientist",
+        goal="Produce a rich, sourced analysis of a detected object",
+        backstory=(
+            "A curious polymath triggered when the scientist approves an object ping. "
+            "Streams contextual analysis to the UI."
+        ),
+        tools=[redis_get, redis_set, redis_publish],
+        llm=llm or _llm(),
+        verbose=True,
+        allow_delegation=False,
+    )
 
 
 # @weave.op()
