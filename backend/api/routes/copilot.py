@@ -39,9 +39,9 @@ router = APIRouter()
 
 @router.post("/copilot")
 async def copilot_runtime(request: Request):
-    """CopilotKit runtime handler.
-
-    TODO [Person 2 + Person 1]: forward the request to the CopilotKit SDK and
-    return its response (streaming).
-    """
-    raise NotImplementedError("copilot_runtime (Person 2 + Person 1)")
+    """CopilotKit runtime handler — stub until Person 1/2 wire up CrewAI."""
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        status_code=501,
+        content={"error": "CopilotKit runtime not yet implemented. Set VITE_COPILOT_PUBLIC_KEY to use Copilot Cloud instead."},
+    )
