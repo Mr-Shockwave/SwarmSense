@@ -18,13 +18,22 @@ router = APIRouter()
 
 
 # TODO [Person 2 + Person 1]:
-#   - Build a CopilotKit remote endpoint that exposes the CrewAI crew/agents.
+#   - Build a CopilotKit remote endpoint that exposes the mission crew AND both
+#     per-rover manager crews (see agents.rover_managers).
+#   - Example: expose build_rover1_manager_agent() and build_rover2_manager_agent()
+#     as separate CopilotKit agents so the scientist can chat with each rover lead.
 #   - Register actions the scientist can call (ask about mission state, approve
 #     targets, query a rover).
 #   - Confirm the exact CopilotKit Python API (add_fastapi_endpoint vs manual).
 #
 # Example shape:
-#   sdk = CopilotKitRemoteEndpoint(agents=[CrewAIAgent(name="roverswarm", crew=get_crew())])
+#   from agents import build_rover1_manager_agent, build_rover2_manager_agent, get_crew
+#   crews = get_crew()
+#   sdk = CopilotKitRemoteEndpoint(agents=[
+#       CrewAIAgent(name="mission", crew=crews["mission_crew"]),
+#       CrewAIAgent(name="rover1-manager", crew=crews["rover1_crew"]),
+#       CrewAIAgent(name="rover2-manager", crew=crews["rover2_crew"]),
+#   ])
 #   add_fastapi_endpoint(app, sdk, "/api/copilot")
 
 
