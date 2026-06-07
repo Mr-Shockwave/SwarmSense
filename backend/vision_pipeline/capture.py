@@ -2,7 +2,8 @@
 
 Owner: Person 3 (Hardware Rover + Gemma Edge)
 
-Thin adapter over the phone camera stream that the vision agent calls on a
+Thin adapter over the phone camera stream that the per-rover vision subagent
+calls on a
 cadence. Uses OpenCV to read the rover's phone camera MJPEG/RTSP stream, grabs
 the freshest frame, downscales + JPEG-compresses it, and returns base64 for
 GPT-4o vision.

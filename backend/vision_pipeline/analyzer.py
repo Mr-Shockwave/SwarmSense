@@ -3,8 +3,8 @@
 Owner: Person 3 (pipeline) + Person 1 (agent consumes this)
 
 Given a photo and the scientist's criteria, decide whether the photo contains a
-matching object and describe it. Used by agents/vision.py and the per-rover
-vision subagent (rover_subagents.run_vision_subagent).
+matching object and describe it. Used by the per-rover vision subagent
+(agents.rover_subagents.run_vision_subagent).
 
 Canonical output shape:
     {"findings": [{"label": str, "description": str, "confidence": float}, ...]}

@@ -1,6 +1,6 @@
 """Findings — the user-requested objects the agents actually detected.
 
-Owner: Person 2 (Backend API + Redis), consumed by Person 1's vision/research agents.
+Owner: Person 2 (Backend API + Redis), consumed by per-rover vision/research subagents.
 
 Distinct from the periodic rover*:images captures. A "finding" is a confirmed
 match against the scientist's criteria, with a photo + description + location.

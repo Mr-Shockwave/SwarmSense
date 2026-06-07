@@ -53,6 +53,8 @@ def seed_mission_state() -> None:
     )
     redis_set_raw("rover1:position", {"x": 0, "y": 0, "heading": 90})
     redis_set_raw("rover2:position", {"x": mid, "y": 0, "heading": 90})
+    redis_set_raw("rover1:errors", [])
+    redis_set_raw("rover2:errors", [])
     redis_set_raw("targets:assignments", {})
 
 

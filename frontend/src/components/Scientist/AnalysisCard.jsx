@@ -1,11 +1,11 @@
-// Streamed research agent analysis. Owner: Person 4.
+// Streamed per-rover research subagent analysis. Owner: Person 4.
 import React, { useState } from "react";
 
 export default function AnalysisCard({ targetId }) {
   const [analysis, setAnalysis] = useState("");
 
   // TODO [Person 4]:
-  //   - When the scientist approves/investigates, the research agent streams
+  //   - When the scientist approves/investigates, the research subagent streams
   //     analysis text (via WS or SSE from /targets/approve).
   //   - Append chunks to `analysis` so the card fills in real time.
   if (!targetId) return null;
