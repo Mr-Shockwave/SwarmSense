@@ -2,7 +2,7 @@
 
 Owner: Person 1 (Agent Logic + CrewAI + Weave)
 
-Each manager supervises vision / navigation / collection subagents via delegation
+Each manager supervises vision / research / error subagents via delegation
 tools (CrewAI 1.x does not allow tools on hierarchical manager agents).
 """
 from __future__ import annotations
@@ -18,8 +18,8 @@ from tools.redis_tools import redis_get, redis_publish, redis_set, redis_set_raw
 
 from .rover_subagents import (
     format_subagent_result,
-    run_collection_subagent,
-    run_navigation_subagent,
+    run_error_subagent,
+    run_research_subagent,
     run_subagent_crew,
     run_vision_subagent,
     subagent_label,
@@ -35,7 +35,7 @@ def _llm() -> LLM | None:
 
 
 def _delegation_tools(rover_id: str, llm: LLM | None) -> list:
-    """Build per-rover tools that delegate to vision / navigation / collection."""
+    """Build per-rover tools that delegate to vision / research / error."""
 
     @tool(f"delegate_{rover_id}_vision")
     def delegate_vision(instruction: str) -> str:
@@ -47,27 +47,27 @@ def _delegation_tools(rover_id: str, llm: LLM | None) -> list:
             llm,
         )
 
-    @tool(f"delegate_{rover_id}_navigation")
-    def delegate_navigation(instruction: str) -> str:
-        """Delegate navigation work to the rover navigation subagent (zone exploration)."""
+    @tool(f"delegate_{rover_id}_research")
+    def delegate_research(instruction: str) -> str:
+        """Delegate research work to summarize {rover_id}'s vision findings."""
         return run_subagent_crew(
             rover_id,
-            "navigation",
-            instruction or f"Plan the next safe exploration step for {rover_id} within its zone.",
+            "research",
+            instruction or f"Summarize {rover_id}:vision:findings against mission:criteria.",
             llm,
         )
 
-    @tool(f"delegate_{rover_id}_collection")
-    def delegate_collection(instruction: str) -> str:
-        """Delegate collection work to the rover collection subagent (target pickup)."""
+    @tool(f"delegate_{rover_id}_error")
+    def delegate_error(instruction: str) -> str:
+        """Delegate error analysis for faults logged on {rover_id}."""
         return run_subagent_crew(
             rover_id,
-            "collection",
-            instruction or f"Check targets:assignments for targets assigned to {rover_id}.",
+            "error",
+            instruction or f"Diagnose any faults in {rover_id}:errors and recommend fixes.",
             llm,
         )
 
-    return [delegate_vision, delegate_navigation, delegate_collection]
+    return [delegate_vision, delegate_research, delegate_error]
 
 
 def build_rover_manager_agent(rover_id: str, llm: LLM | None = None) -> Agent:
@@ -78,13 +78,13 @@ def build_rover_manager_agent(rover_id: str, llm: LLM | None = None) -> Agent:
         role=f"{rover_id} Manager",
         goal=(
             f"Supervise {rover_id} exploration: read mission state from Redis, "
-            "update rover status, and delegate to vision/navigation/collection subagents."
+            "update rover status, and delegate to vision/research/error subagents."
         ),
         backstory=(
             f"You command {rover_id} in the RoverSwarm fleet. "
             "Mission goals live in mission:goal / mission:criteria. "
-            f"Your zone is {rover_id}:zone; publish heartbeat on {rover_id}:status. "
-            "Use delegate_* tools for specialist work — never analyze photos or plan routes yourself."
+            f"Publish heartbeat on {rover_id}:status. "
+            "Use delegate_* tools for specialist work — never analyze photos yourself."
         ),
         tools=tools,
         llm=shared_llm,
@@ -109,8 +109,8 @@ You are the manager for {rover_id}. Complete these steps in order:
 2. redis_set {rover_id}:status to a JSON object with state=active, phase=exploring, rover_id={rover_id}.
 3. redis_publish the same JSON on channel {rover_id}:status.
 4. Call delegate_{rover_id}_vision to analyze mission criteria for {rover_id}.
-5. Call delegate_{rover_id}_navigation to plan the next exploration step in {rover_id}'s zone.
-6. Call delegate_{rover_id}_collection to check pickup targets for {rover_id}.
+5. Call delegate_{rover_id}_research to summarize vision findings for {rover_id}.
+6. Call delegate_{rover_id}_error to check and diagnose any faults in {rover_id}:errors.
 7. Return a concise summary naming each subagent and what it reported.
 """.strip()
 
@@ -161,8 +161,8 @@ def run_manager_dry(rover_id: str) -> dict[str, Any]:
     redis_publish_raw(f"{rover_id}:status", status)
 
     vision_out = run_vision_subagent(rover_id)
-    nav_out = run_navigation_subagent(rover_id)
-    coll_out = run_collection_subagent(rover_id)
+    research_out = run_research_subagent(rover_id)
+    error_out = run_error_subagent(rover_id)
 
     return {
         "manager": f"{rover_id} Manager",
@@ -170,8 +170,8 @@ def run_manager_dry(rover_id: str) -> dict[str, Any]:
         "rover": {"zone": zone, "position_before": position, "status": status},
         "delegations": {
             subagent_label(rover_id, "vision"): vision_out,
-            subagent_label(rover_id, "navigation"): nav_out,
-            subagent_label(rover_id, "collection"): coll_out,
+            subagent_label(rover_id, "research"): research_out,
+            subagent_label(rover_id, "error"): error_out,
         },
     }
 

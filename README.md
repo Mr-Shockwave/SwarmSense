@@ -16,10 +16,7 @@ execution layer) — flip a single environment variable to switch.
 [ Scientist ] → [ CopilotKit UI ] → [ FastAPI Gateway ]
                                           │
                             ┌─────────────┴─────────────┐
-                            │   CrewAI Cloud Agent Crew  │
-                            │  orchestrator / research / │
-                            │  debug  (+ mission vision  │
-                            │  & collection planner)     │
+                            │   Mission Orchestrator    │  ← fleet-wide only
                             └─────────────┬─────────────┘
                                           │
                                     [ Redis Layer ]
@@ -28,16 +25,16 @@ execution layer) — flip a single environment variable to switch.
                               ┌───────────┴───────────┐
                     [ Rover1Manager ]         [ Rover2Manager ]   ← GPT-4o, one per robot
                        │    │    │               │    │    │
-                    vision nav collection     vision nav collection  ← subagents
+                    vision research error    vision research error  ← subagents
                        │                         │
                   [ Rover 1 ]               [ Rover 2 ]
                   Gemma 2B (edge)           Gemma 2B (edge)
 ```
 
-- **Mission crew** (`backend/agents/`): orchestrator splits zones and coordinates
-  fleet-wide; research and debug handle scientist pings and self-healing.
+- **Mission orchestrator** (`backend/agents/orchestrator.py`): splits zones and
+  coordinates fleet-wide mission readiness.
 - **Per-rover managers** (`rover_managers.py`): one GPT-4o manager per robot,
-  each supervising vision / navigation / collection subagents (`rover_subagents.py`).
+  each supervising vision / research / error subagents (`rover_subagents.py`).
 - **Edge Gemma** (`rovers/gemma_edge.py`): local advisory; final move authority
   stays on the rover (see `TRUST_CLOUD_AGENT` in `config.py`).
 
@@ -129,13 +126,14 @@ needs to be implemented.
 
 ## Demo Arc
 
-1. **Split & explore** — rovers take left/right zones, map builds live.
-2. **Interesting find** — vision agent detects an object, pings scientist,
-   research agent streams analysis, orchestrator reassigns to nearest rover.
+1. **Split & explore** — orchestrator assigns left/right zones; rovers explore.
+2. **Interesting find** — per-rover vision subagent detects an object; research
+   subagent summarizes findings; scientist is pinged via the UI.
 3. **Red zone propagation** — one rover hits an obstacle, broadcasts a red zone,
    the other reroutes before reaching it.
 4. **Anti-gaslight moment** — rovers disagree; local sensor data wins; the
    disagreement is logged to Weave.
-5. **Self-healing** — a rover fault is diagnosed by the debug agent via Weave
-   traces and a fix is pushed.
-6. **Collection & return** — rovers retrieve approved targets and return home.
+5. **Self-healing** — per-rover error subagent diagnoses a fault from
+   `{rover_id}:errors` and recommends a fix.
+6. **Collection & return** — mission collection planner assigns targets; rovers
+   retrieve approved targets and return home.

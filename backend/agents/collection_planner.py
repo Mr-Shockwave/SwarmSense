@@ -2,10 +2,9 @@
 
 Owner: Person 1 (Agent Logic + CrewAI + Weave)
 
-NOTE: Per-rover pickup execution lives in each rover's collection *subagent*
+NOTE: Per-rover agent workflow uses vision / research / error subagents only
 (agents/rover_subagents.py). This mission-level planner assigns targets across
-rovers (targets:assignments) and plans fleet-wide routes — it does not drive
-individual {rover_id}:collection subagents directly.
+rovers (targets:assignments) and plans fleet-wide routes.
 
 Responsibilities:
   - Maintains the approved-targets list (targets:approved in Redis).

@@ -18,10 +18,9 @@ router = APIRouter()
 
 
 # TODO [Person 2 + Person 1]:
-#   - Build a CopilotKit remote endpoint that exposes the mission crew AND both
-#     per-rover manager crews (see agents.rover_managers).
-#   - Example: expose build_rover1_manager_agent() and build_rover2_manager_agent()
-#     as separate CopilotKit agents so the scientist can chat with each rover lead.
+#   - Build a CopilotKit remote endpoint that exposes the mission orchestrator
+#     AND both per-rover manager crews (see agents.rover_managers).
+#   - Each manager supervises vision / research / error subagents.
 #   - Register actions the scientist can call (ask about mission state, approve
 #     targets, query a rover).
 #   - Confirm the exact CopilotKit Python API (add_fastapi_endpoint vs manual).

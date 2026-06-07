@@ -1,11 +1,10 @@
-"""Per-rover subagents — vision, navigation, collection.
+"""Per-rover subagents — vision, research, error.
 
 Owner: Person 1 (Agent Logic + CrewAI + Weave)
 
 Each physical rover (rover1, rover2) has its own trio of subagents supervised by
-that rover's manager (see rover_managers.py). These replace rover-specific work
-that mission-level agents/vision.py and collection_planner.py handle at the
-*mission* scope (cross-rover photo review, nearest-rover target assignment).
+that rover's manager (see rover_managers.py): vision (frame analysis),
+research (summarize findings), and error (fault diagnosis).
 
 Pattern: managers invoke subagents via delegation tools (see rover_managers.py),
 not hierarchical CrewAI Process — required by CrewAI 1.x (manager agents cannot
@@ -21,7 +20,7 @@ from typing import Any
 
 from crewai import Agent, Crew, LLM, Process, Task
 
-from agents.vision import analyze_photo
+from vision_pipeline.analyzer import analyze_photo
 from config import settings
 from tools.redis_tools import (
     get_sync_redis,
@@ -175,39 +174,64 @@ def run_vision_subagent(rover_id: str) -> dict[str, Any]:
     redis_set_raw(f"{rover_id}:vision:last", result)
     if findings and not is_duplicate:  # don't re-publish a static match every cycle
         redis_publish_raw(f"{rover_id}:vision", vision_payload)
+        # TODO [Person 1 + Person 2]: call findings_state.add_finding(...) so the
+        # scientist UI receives scientist:ping (see redis_layer/findings_state.py).
     return result
 
 
-def run_navigation_subagent(rover_id: str) -> dict[str, Any]:
-    """Plan the next exploration step inside the rover's assigned zone."""
-    zone = redis_get_raw(f"{rover_id}:zone") or {}
-    position = redis_get_raw(f"{rover_id}:position") or {"x": zone.get("x_min", 0), "y": 0, "heading": 0}
-    x = int(position.get("x", zone.get("x_min", 0)))
-    y = int(position.get("y", 0))
-    next_x = min(x + 1, zone.get("x_max", x))
-    next_pos = {"x": next_x, "y": y, "heading": position.get("heading", 0)}
-    redis_set_raw(f"{rover_id}:position", next_pos)
+def run_research_subagent(rover_id: str) -> dict[str, Any]:
+    """Summarize vision findings for this rover (stub — no LLM required for dry-run)."""
+    criteria = redis_get_raw("mission:criteria") or "(no criteria)"
+    vision_data = redis_get_raw(f"{rover_id}:vision:findings") or {}
+    if not vision_data.get("findings"):
+        last = redis_get_raw(f"{rover_id}:vision:last") or {}
+        vision_data = {"findings": last.get("findings", []), "image_id": last.get("image_id")}
+
+    findings = vision_data.get("findings", [])
+    summary = ""
+    if findings:
+        labels = [f.get("label", "object") for f in findings]
+        summary = (
+            f"Research summary for {rover_id}: detected {len(findings)} candidate(s) "
+            f"matching criteria {criteria!r}: {', '.join(labels)}."
+        )
+
     result = {
-        "agent": subagent_label(rover_id, "navigation"),
-        "action": "explore_step",
-        "from": position,
-        "to": next_pos,
-        "zone": zone,
+        "agent": subagent_label(rover_id, "research"),
+        "findings_count": len(findings),
+        "summary": summary or f"No findings to research for {rover_id}.",
+        "criteria": criteria,
+        "image_id": vision_data.get("image_id"),
     }
-    redis_publish_raw(f"{rover_id}:position", next_pos)
+    redis_set_raw(f"{rover_id}:research:last", result)
+    if findings:
+        redis_publish_raw(f"{rover_id}:research", result)
     return result
 
 
-def run_collection_subagent(rover_id: str) -> dict[str, Any]:
-    """Check approved targets assigned to this rover (stub)."""
-    assignments = redis_get_raw("targets:assignments") or {}
-    mine = {tid: rid for tid, rid in assignments.items() if rid == rover_id}
+def run_error_subagent(rover_id: str) -> dict[str, Any]:
+    """Diagnose the latest faults logged for this rover (stub)."""
+    errors = redis_get_raw(f"{rover_id}:errors") or []
+    if not isinstance(errors, list):
+        errors = [errors] if errors else []
+
+    diagnosis = ""
+    if errors:
+        latest = errors[0] if errors else {}
+        diagnosis = (
+            f"Error analysis for {rover_id}: {len(errors)} fault(s) on record. "
+            f"Latest: {latest!r}. Recommend inspect sensors and retry last action."
+        )
+
     result = {
-        "agent": subagent_label(rover_id, "collection"),
-        "assigned_targets": mine,
-        "action": "idle" if not mine else "plan_pickup",
+        "agent": subagent_label(rover_id, "error"),
+        "error_count": len(errors),
+        "diagnosis": diagnosis or f"No faults recorded for {rover_id}.",
+        "errors": errors[:5],
     }
-    redis_set_raw(f"{rover_id}:collection:last", result)
+    redis_set_raw(f"{rover_id}:error:last", result)
+    if errors:
+        redis_publish_raw(f"{rover_id}:error", result)
     return result
 
 
@@ -229,13 +253,14 @@ def build_vision_subagent(rover_id: str, llm: LLM | None = None) -> Agent:
     )
 
 
-def build_navigation_subagent(rover_id: str, llm: LLM | None = None) -> Agent:
+def build_research_subagent(rover_id: str, llm: LLM | None = None) -> Agent:
     return Agent(
-        role=f"{rover_id} Navigation Specialist",
-        goal=f"Explore {rover_id}'s assigned zone and coordinate obstacle avoidance via Redis",
+        role=f"{rover_id} Research Specialist",
+        goal=f"Produce contextual analysis of {rover_id}'s vision findings",
         backstory=(
-            f"You plan safe exploration steps for {rover_id} within its zone bounds. "
-            f"Read/write {rover_id}:zone and {rover_id}:position; publish position updates."
+            f"You are the field researcher for {rover_id}. "
+            f"Read {rover_id}:vision:findings or {rover_id}:vision:last and mission:criteria; "
+            "summarize detected objects for the scientist."
         ),
         tools=SUBAGENT_TOOLS,
         llm=llm or _llm(),
@@ -244,13 +269,14 @@ def build_navigation_subagent(rover_id: str, llm: LLM | None = None) -> Agent:
     )
 
 
-def build_collection_subagent(rover_id: str, llm: LLM | None = None) -> Agent:
+def build_error_subagent(rover_id: str, llm: LLM | None = None) -> Agent:
     return Agent(
-        role=f"{rover_id} Collection Specialist",
-        goal=f"Retrieve scientist-approved targets assigned to {rover_id}",
+        role=f"{rover_id} Error Analyst",
+        goal=f"Diagnose and report faults recorded for {rover_id}",
         backstory=(
-            f"You handle pickup logic for {rover_id}. "
-            "Read targets:assignments and report whether any targets need collection."
+            f"You are the error analyst for {rover_id}. "
+            f"Read {rover_id}:errors from Redis, diagnose the latest fault, "
+            "and recommend remediation."
         ),
         tools=SUBAGENT_TOOLS,
         llm=llm or _llm(),
@@ -263,8 +289,8 @@ def build_rover_subagents(rover_id: str, llm: LLM | None = None) -> dict[str, Ag
     shared = llm or _llm()
     return {
         "vision": build_vision_subagent(rover_id, shared),
-        "navigation": build_navigation_subagent(rover_id, shared),
-        "collection": build_collection_subagent(rover_id, shared),
+        "research": build_research_subagent(rover_id, shared),
+        "error": build_error_subagent(rover_id, shared),
     }
 
 
@@ -272,8 +298,8 @@ def run_subagent_crew(rover_id: str, role: str, instruction: str, llm: LLM | Non
     """Run a single subagent in its own one-task crew (invoked by manager delegation tools)."""
     builders = {
         "vision": build_vision_subagent,
-        "navigation": build_navigation_subagent,
-        "collection": build_collection_subagent,
+        "research": build_research_subagent,
+        "error": build_error_subagent,
     }
     agent = builders[role](rover_id, llm)
     task = Task(

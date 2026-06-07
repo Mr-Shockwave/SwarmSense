@@ -2,13 +2,17 @@
 
 Owner: Person 3 (Hardware Rover + Gemma Edge)
 
-Thin adapter over the phone camera stream that the vision agent calls on a
+Thin adapter over the phone camera stream that the per-rover vision subagent
+calls on a
 cadence. Uses OpenCV to read the rover's phone camera MJPEG/RTSP stream, grabs
 the freshest frame, downscales + JPEG-compresses it, and returns base64 for
 GPT-4o vision.
 
-The stream URL is read from a single env var (kept out of the repo):
-    STREAM_URL=http://<phone-ip>:8080/video
+The stream URL is read from env (kept out of the repo). Per-rover first, then a
+shared fallback:
+    STREAM_URL_ROVER1=http://<phone-ip>:8080/video   # rover-specific
+    STREAM_URL_ROVER2=http://<phone-ip>:8080/video
+    STREAM_URL=http://<phone-ip>:8080/video          # fallback (single camera)
 
 capture.py stays decoupled from Redis/vision: it captures and invokes on_photo.
 Whoever wires on_photo decides whether frames go to Redis ({rover_id}:images)
@@ -42,11 +46,20 @@ STREAM_URL_ENV = "STREAM_URL"
 
 
 def _stream_url(rover=None) -> str:
+    # Prefer a per-rover stream (STREAM_URL_ROVER1 / STREAM_URL_ROVER2), so each
+    # phone camera maps to its own rover. Fall back to a shared STREAM_URL.
+    rover_id = getattr(rover, "rover_id", None)
+    if rover_id:
+        per_rover = os.getenv(f"{STREAM_URL_ENV}_{rover_id.upper()}")
+        if per_rover:
+            return per_rover
+
     url = os.getenv(STREAM_URL_ENV)
     if not url:
         raise RuntimeError(
-            f"{STREAM_URL_ENV} is not set (expected the phone camera stream, "
-            "e.g. http://<phone-ip>:8080/video)"
+            f"No stream URL set for {rover_id or 'rover'}: expected "
+            f"{STREAM_URL_ENV}_{(rover_id or 'ROVERN').upper()} or {STREAM_URL_ENV} "
+            "(e.g. http://<phone-ip>:8080/video)"
         )
     return url
 

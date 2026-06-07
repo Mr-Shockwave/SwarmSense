@@ -7,8 +7,8 @@ Weave should trace:
   - Every vision API call (input photo + output match/description)
   - Every inter-rover disagreement (anti-gaslight events)
   - Every red zone broadcast
-  - Every research agent stream
-  - Every debug agent fix attempt
+  - Every research subagent stream
+  - Every error subagent fix attempt
 """
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ def init_weave() -> None:
 
 # @weave.op()
 def score_vision_match(output: dict) -> dict:
-    """Score a vision agent result.
+    """Score a vision subagent result.
 
     TODO [Person 1]: return {"confidence": float, "has_description": bool}.
     """
