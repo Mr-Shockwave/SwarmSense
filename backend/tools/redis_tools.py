@@ -120,6 +120,26 @@ def redis_publish_raw(channel: str, message: Any) -> str:
     return f"OK published to {channel}"
 
 
+def redis_get_image(image_id: str) -> str | None:
+    """Read content-addressed frame bytes at image:{image_id}; return base64 or None."""
+    if not image_id:
+        return None
+    try:
+        raw = get_sync_redis().get(f"image:{image_id}")
+    except Exception as exc:  # noqa: BLE001
+        _warn_once(exc)
+        return None
+    if raw is None:
+        return None
+    return raw if isinstance(raw, str) else raw.decode("utf-8", "ignore")
+
+
+def redis_get_vision_last(rover_id: str) -> dict[str, Any] | None:
+    """Read {rover_id}:vision:last; return dict or None."""
+    value = redis_get_raw(f"{rover_id}:vision:last")
+    return value if isinstance(value, dict) else None
+
+
 @tool("redis_get")
 def redis_get(key: str) -> str:
     """Read a value from Redis by key (mission:goal, rover1:zone, etc.)."""
@@ -151,3 +171,47 @@ def redis_publish(channel: str, message: str) -> str:
     except (json.JSONDecodeError, TypeError):
         pass
     return redis_publish_raw(channel, parsed)
+
+
+@tool("get_vision_match")
+def get_vision_match(rover_id: str) -> str:
+    """Return the latest vision verdict for a rover ({rover_id}:vision:last)."""
+    result = redis_get_vision_last(rover_id)
+    if result is None:
+        return json.dumps({"status": "missing"})
+    return json.dumps(result)
+
+
+@tool("get_cached_image")
+def get_cached_image(image_id: str) -> str:
+    """Check whether a content-addressed frame exists at image:{image_id} (metadata only)."""
+    photo_b64 = redis_get_image(image_id)
+    byte_length = 0
+    if photo_b64:
+        try:
+            import base64
+
+            byte_length = len(base64.b64decode(photo_b64))
+        except Exception:  # noqa: BLE001
+            byte_length = len(photo_b64)
+    return json.dumps(
+        {
+            "image_id": image_id,
+            "has_image": photo_b64 is not None,
+            "byte_length": byte_length,
+        }
+    )
+
+
+@tool("save_research_result")
+def save_research_result(rover_id: str, result_json: str) -> str:
+    """Parse JSON and write {rover_id}:research:last, then publish on {rover_id}:research."""
+    try:
+        parsed = json.loads(result_json)
+    except (json.JSONDecodeError, TypeError) as exc:
+        return f"ERROR invalid JSON: {exc}"
+    if not isinstance(parsed, dict):
+        return "ERROR result_json must be a JSON object"
+    redis_set_raw(f"{rover_id}:research:last", parsed)
+    redis_publish_raw(f"{rover_id}:research", parsed)
+    return f"OK saved research for {rover_id}"

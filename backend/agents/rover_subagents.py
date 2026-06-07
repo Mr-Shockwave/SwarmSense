@@ -9,6 +9,12 @@ research (summarize findings), and error (fault diagnosis).
 Pattern: managers invoke subagents via delegation tools (see rover_managers.py),
 not hierarchical CrewAI Process — required by CrewAI 1.x (manager agents cannot
 hold tools in hierarchical crews).
+
+Redis key contract (vision → research):
+  {rover_id}:vision:last   — written by vision runtime; read by research runtime/tools
+  image:{image_id}         — written by vision _store_image; read by research runtime/tools
+  {rover_id}:research:last — written by research runtime / save_research_result
+  {rover_id}:research      — pub channel; research runtime / save_research_result
 """
 from __future__ import annotations
 
@@ -23,16 +29,22 @@ from crewai import Agent, Crew, LLM, Process, Task
 from vision_pipeline.analyzer import analyze_photo
 from config import settings
 from tools.redis_tools import (
+    get_cached_image,
     get_sync_redis,
+    get_vision_match,
     redis_get,
+    redis_get_image,
     redis_get_raw,
+    redis_get_vision_last,
     redis_publish,
     redis_publish_raw,
     redis_set,
     redis_set_raw,
+    save_research_result,
 )
 
 SUBAGENT_TOOLS = [redis_get, redis_set, redis_publish]
+RESEARCH_TOOLS = SUBAGENT_TOOLS + [get_vision_match, get_cached_image, save_research_result]
 
 
 def _llm() -> LLM | None:
@@ -132,6 +144,8 @@ def run_vision_subagent(rover_id: str) -> dict[str, Any]:
     if photo_b64:
         phash = _perceptual_hash(photo_b64)
         image_id = f"{phash:016x}" if phash is not None else None
+        if image_id:
+            _store_image(image_id, photo_b64)
         found = _run_sync(analyze_photo(photo_b64, str(criteria)))
 
     result = {
@@ -146,6 +160,40 @@ def run_vision_subagent(rover_id: str) -> dict[str, Any]:
         redis_publish_raw(f"{rover_id}:vision", result)
         # TODO [Person 1 + Person 2]: call findings_state.add_finding(...) so the
         # scientist UI receives scientist:ping (see redis_layer/findings_state.py).
+    return result
+
+
+def run_research_subagent(rover_id: str) -> dict[str, Any]:
+    """Generate research context for a vision match. Skips if no match."""
+    vision_result = redis_get_vision_last(rover_id)
+
+    if not vision_result or not vision_result.get("match"):
+        result = {
+            "agent": subagent_label(rover_id, "research"),
+            "status": "skipped",
+            "reason": "no_vision_match_or_no_data",
+        }
+        redis_set_raw(f"{rover_id}:research:last", result)
+        return result
+
+    image_id = vision_result.get("image_id")
+    criteria = vision_result.get("criteria", "unknown")
+    photo_b64 = redis_get_image(image_id) if image_id else None
+
+    result = {
+        "agent": subagent_label(rover_id, "research"),
+        "status": "ready",
+        "image_id": image_id,
+        "criteria": criteria,
+        "has_image": photo_b64 is not None,
+        "summary": "",
+        "context": {
+            "vision": vision_result,
+            "rover_id": rover_id,
+        },
+    }
+    redis_set_raw(f"{rover_id}:research:last", result)
+    redis_publish_raw(f"{rover_id}:research", result)
     return result
 
 
@@ -173,10 +221,11 @@ def build_research_subagent(rover_id: str, llm: LLM | None = None) -> Agent:
         goal=f"Produce contextual analysis of {rover_id}'s vision findings",
         backstory=(
             f"You are the field researcher for {rover_id}. "
-            f"Read {rover_id}:vision:findings or {rover_id}:vision:last and mission:criteria; "
-            "summarize detected objects for the scientist."
+            f"Read {rover_id}:vision:last and mission:criteria via get_vision_match; "
+            "inspect cached frames with get_cached_image; "
+            "persist findings with save_research_result."
         ),
-        tools=SUBAGENT_TOOLS,
+        tools=RESEARCH_TOOLS,
         llm=llm or _llm(),
         verbose=True,
         allow_delegation=False,
