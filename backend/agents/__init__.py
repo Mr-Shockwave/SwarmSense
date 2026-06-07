@@ -10,8 +10,8 @@ from .rover_managers import (
     build_rover_manager_agent,
 )
 from .rover_subagents import (
-    build_collection_subagent,
-    build_navigation_subagent,
+    build_error_subagent,
+    build_research_subagent,
     build_rover_subagents,
     build_vision_subagent,
 )
@@ -28,6 +28,6 @@ __all__ = [
     "build_rover2_crew",
     "build_rover_subagents",
     "build_vision_subagent",
-    "build_navigation_subagent",
-    "build_collection_subagent",
+    "build_research_subagent",
+    "build_error_subagent",
 ]

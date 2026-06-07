@@ -72,7 +72,7 @@ async def get_zone(rover_id: str) -> dict:
 
 
 async def log_error(rover_id: str, error: dict) -> None:
-    """Append a fault to the rover's error log (consumed by the debug agent).
+    """Append a fault to the rover's error log (consumed by the per-rover error subagent).
 
     TODO [Person 2]: client.lpush(f"{rover_id}:errors", json(error)).
     """
