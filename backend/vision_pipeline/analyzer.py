@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 """GPT-4o vision call + criteria matching.
 
 Owner: Person 3 (pipeline) + Person 1 (agent consumes this)
@@ -9,15 +10,22 @@ Canonical output shape:
     {"findings": [{"label": str, "description": str, "confidence": float}, ...]}
 An empty `findings` list means nothing in the frame matched the criteria.
 """
+=======
+>>>>>>> 513345842c1fa96d1404d68bdac41230871762d8
 from __future__ import annotations
 
 import weave
 from openai import AsyncOpenAI
+<<<<<<< HEAD
 from pydantic import BaseModel, Field
+=======
+from pydantic import BaseModel
+>>>>>>> 513345842c1fa96d1404d68bdac41230871762d8
 
 from config import settings
 
 
+<<<<<<< HEAD
 class Finding(BaseModel):
     label: str = Field(description="Short name of the matching object, e.g. 'red cube'.")
     description: str = Field(description="What it looks like and roughly where it sits in the frame.")
@@ -26,6 +34,10 @@ class Finding(BaseModel):
 
 class VisionResult(BaseModel):
     findings: list[Finding]
+=======
+class VisionVerdict(BaseModel):
+    found: bool
+>>>>>>> 513345842c1fa96d1404d68bdac41230871762d8
 
 
 _SYSTEM = (
