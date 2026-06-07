@@ -28,7 +28,7 @@ from typing import Any
 from crewai import Agent, Crew, LLM, Process, Task
 from crewai.tools import tool
 
-from agents.vision import analyze_photo
+from vision_pipeline.analyzer import analyze_photo
 from config import settings
 from tools.redis_tools import (
     get_sync_redis,
