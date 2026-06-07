@@ -121,44 +121,24 @@ def _store_image(image_id: str, photo_b64: str) -> None:
 def run_vision_subagent(rover_id: str) -> dict[str, Any]:
     """Analyze the rover's latest frame against mission criteria.
 
-    Dedupes near-identical frames via a perceptual hash so a static scene
-    captured every few seconds doesn't re-run vision or re-store the image. The
-    frame is content-addressed at image:<image_id> and referenced by id from the
-    findings JSON, rather than inlined on every write (which would bloat Redis).
+    Frame dedup is handled upstream by the main agent (process_image), so this
+    just analyzes the current frame and writes the findings. The frame is
+    content-addressed at image:<image_id> and referenced by id from the JSON.
     Empty `findings` => target not found.
     """
     criteria = redis_get_raw("mission:criteria") or "(no criteria)"
-    images_key = f"{rover_id}:images"
-    photo_b64 = _latest_frame(images_key)
+    photo_b64 = _latest_frame(f"{rover_id}:images")
 
-    phash = _perceptual_hash(photo_b64) if photo_b64 else None
-    prev = redis_get_raw(f"{rover_id}:vision:state") or {}
-    is_duplicate = (
-        phash is not None
-        and prev.get("hash") is not None
-        and prev.get("criteria") == criteria
-        and _hamming(phash, int(prev["hash"])) <= DEDUP_HAMMING_THRESHOLD
-    )
-
-    if is_duplicate:
-        # Same scene + same criteria as last cycle: reuse, skip vision + re-store.
-        image_id = prev.get("image_id")
-        cached = redis_get_raw(f"{rover_id}:vision:findings") or {"findings": []}
-        findings = cached.get("findings", [])
-    else:
+    image_id = None
+    vision: dict[str, Any] = {"findings": []}
+    if photo_b64:
+        phash = _perceptual_hash(photo_b64)
         image_id = f"{phash:016x}" if phash is not None else None
-        vision: dict[str, Any] = {"findings": []}
-        if photo_b64:
-            vision = _run_sync(analyze_photo(photo_b64, str(criteria)))
-        findings = vision.get("findings", [])
-        if photo_b64 and image_id:
+        if image_id:
             _store_image(image_id, photo_b64)
-        redis_set_raw(
-            f"{rover_id}:vision:state",
-            {"hash": phash, "image_id": image_id, "criteria": criteria},
-        )
+        vision = _run_sync(analyze_photo(photo_b64, str(criteria)))
+    findings = vision.get("findings", [])
 
-    # Canonical analyze_photo JSON, now carrying the image reference.
     vision_payload = {"findings": findings, "image_id": image_id}
     redis_set_raw(f"{rover_id}:vision:findings", vision_payload)
 
@@ -169,10 +149,9 @@ def run_vision_subagent(rover_id: str) -> dict[str, Any]:
         "image_id": image_id,      # fetch the frame at image:<image_id>
         "criteria": criteria,
         "has_frame": photo_b64 is not None,
-        "deduped": is_duplicate,
     }
     redis_set_raw(f"{rover_id}:vision:last", result)
-    if findings and not is_duplicate:  # don't re-publish a static match every cycle
+    if findings:
         redis_publish_raw(f"{rover_id}:vision", vision_payload)
         # TODO [Person 1 + Person 2]: call findings_state.add_finding(...) so the
         # scientist UI receives scientist:ping (see redis_layer/findings_state.py).
