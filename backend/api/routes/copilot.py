@@ -18,21 +18,29 @@ router = APIRouter()
 
 
 # TODO [Person 2 + Person 1]:
-#   - Build a CopilotKit remote endpoint that exposes the CrewAI crew/agents.
+#   - Build a CopilotKit remote endpoint that exposes the mission orchestrator
+#     AND both per-rover manager crews (see agents.rover_managers).
+#   - Each manager supervises vision / research / error subagents.
 #   - Register actions the scientist can call (ask about mission state, approve
 #     targets, query a rover).
 #   - Confirm the exact CopilotKit Python API (add_fastapi_endpoint vs manual).
 #
 # Example shape:
-#   sdk = CopilotKitRemoteEndpoint(agents=[CrewAIAgent(name="roverswarm", crew=get_crew())])
+#   from agents import build_rover1_manager_agent, build_rover2_manager_agent, get_crew
+#   crews = get_crew()
+#   sdk = CopilotKitRemoteEndpoint(agents=[
+#       CrewAIAgent(name="mission", crew=crews["mission_crew"]),
+#       CrewAIAgent(name="rover1-manager", crew=crews["rover1_crew"]),
+#       CrewAIAgent(name="rover2-manager", crew=crews["rover2_crew"]),
+#   ])
 #   add_fastapi_endpoint(app, sdk, "/api/copilot")
 
 
 @router.post("/copilot")
 async def copilot_runtime(request: Request):
-    """CopilotKit runtime handler.
-
-    TODO [Person 2 + Person 1]: forward the request to the CopilotKit SDK and
-    return its response (streaming).
-    """
-    raise NotImplementedError("copilot_runtime (Person 2 + Person 1)")
+    """CopilotKit runtime handler — stub until Person 1/2 wire up CrewAI."""
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        status_code=501,
+        content={"error": "CopilotKit runtime not yet implemented. Set VITE_COPILOT_PUBLIC_KEY to use Copilot Cloud instead."},
+    )

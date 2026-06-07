@@ -1,49 +1,55 @@
-"""CrewAI crew definition — wires together all five agents.
+"""CrewAI crew definition — mission orchestrator + per-rover manager crews.
 
 Owner: Person 1 (Agent Logic + CrewAI + Weave)
 
-The crew is the cloud "brain". Each agent has a role, goal, backstory, and tools.
-Every agent call is traced by Weave (see weave_tracing/tracer.py).
+Hackathon-centralized model:
+  - mission_crew: orchestrator only (fleet-wide zone split, mission readiness)
+  - rover1_crew / rover2_crew: GPT-4o managers with vision / research / error subagents
 """
 from __future__ import annotations
 
-# from crewai import Agent, Crew, Process, Task
+from crewai import Crew, Process, Task
 
 from .orchestrator import build_orchestrator_agent
-from .vision import build_vision_agent
-from .research import build_research_agent
-from .collection_planner import build_collection_planner_agent
-from .debug import build_debug_agent
+from .rover_managers import build_rover1_crew, build_rover2_crew
 
 
-def build_crew():
-    """Construct and return the full CrewAI crew.
+def build_mission_crew() -> Crew:
+    """Fleet-level crew — orchestrator only."""
+    orchestrator = build_orchestrator_agent()
 
-    TODO [Person 1]:
-      - Instantiate all five agents via their build_* factories.
-      - Define the Tasks each agent performs and their wiring (sequential vs
-        hierarchical Process).
-      - Attach shared tools (Redis read/write, vision API, web search).
-      - Wrap with Weave tracing so every agent step is logged.
+    kickoff_task = Task(
+        description=(
+            "Read mission:goal and mission:status from Redis. "
+            "Confirm rover1:zone and rover2:zone are assigned. "
+            "Summarize mission readiness for the fleet."
+        ),
+        expected_output="Mission readiness summary with zone assignments.",
+        agent=orchestrator,
+    )
+
+    return Crew(
+        agents=[orchestrator],
+        tasks=[kickoff_task],
+        process=Process.sequential,
+        verbose=True,
+    )
+
+
+def build_crew() -> dict:
+    """Construct mission crew + both per-rover manager crews.
 
     Returns:
-        crewai.Crew configured for the mission loop.
+        dict with keys mission_crew, rover1_crew, rover2_crew for smoke testing
+        and API wiring.
     """
-    orchestrator = build_orchestrator_agent()
-    vision = build_vision_agent()
-    research = build_research_agent()
-    collection_planner = build_collection_planner_agent()
-    debug = build_debug_agent()
-
-    agents = [orchestrator, vision, research, collection_planner, debug]
-
-    # TODO [Person 1]: define Tasks and assemble the Crew.
-    # crew = Crew(agents=agents, tasks=[...], process=Process.hierarchical)
-    # return crew
-    raise NotImplementedError("build_crew: assemble Tasks + Crew (Person 1)")
+    return {
+        "mission_crew": build_mission_crew(),
+        "rover1_crew": build_rover1_crew(),
+        "rover2_crew": build_rover2_crew(),
+    }
 
 
-# TODO [Person 1]: provide a singleton accessor so the API layer reuses one crew.
 _crew = None
 
 

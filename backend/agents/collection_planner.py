@@ -1,6 +1,10 @@
-"""Collection planner agent — assigns and routes approved targets.
+"""Collection planner agent — mission-level target assignment.
 
 Owner: Person 1 (Agent Logic + CrewAI + Weave)
+
+NOTE: Per-rover agent workflow uses vision / research / error subagents only
+(agents/rover_subagents.py). This mission-level planner assigns targets across
+rovers (targets:assignments) and plans fleet-wide routes.
 
 Responsibilities:
   - Maintains the approved-targets list (targets:approved in Redis).

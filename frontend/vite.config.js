@@ -4,6 +4,9 @@ import react from "@vitejs/plugin-react";
 // TODO [Person 4]: confirm proxy targets match backend port (config BACKEND_PORT).
 export default defineConfig({
   plugins: [react()],
+  // Load env vars from the repo root .env (one level up), not just frontend/.
+  // Only VITE_-prefixed vars are exposed to client code; secrets stay server-only.
+  envDir: "..",
   server: {
     port: 5173,
     proxy: {

@@ -20,7 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import settings
 
 # Routers
-from api.routes import mission, map as map_routes, rovers, targets, copilot
+from api.routes import mission, map as map_routes, rovers, targets, copilot, findings
 from api import websocket as ws
 
 logging.basicConfig(level=logging.INFO)
@@ -62,13 +62,25 @@ async def lifespan(app: FastAPI):
     mode = "SIMULATION" if settings.SIMULATION_MODE else "HARDWARE"
     logger.info("RoverSwarm starting in %s mode", mode)
 
-    # TODO [Person 2]: start background Pub/Sub listeners (redis_layer.pubsub).
+    # --- 6. Live Redis -> WebSocket bridge ---
+    # Forwards rover:frames + scientist:ping pub/sub messages to connected UIs.
+    import asyncio
+    from api.websocket import redis_bridge
+    app.state.ws_bridge = asyncio.create_task(redis_bridge())
+    logger.info("WebSocket live bridge started")
+
     # TODO [Person 3]: instantiate rovers (SimulatedRover vs HardwareRover) per mode.
 
     yield
 
     # --- Shutdown ---
-    # TODO [Person 2]: close Redis connection, cancel pubsub tasks, stop rovers.
+    bridge = getattr(app.state, "ws_bridge", None)
+    if bridge is not None:
+        bridge.cancel()
+        try:
+            await bridge
+        except (asyncio.CancelledError, Exception):  # noqa: BLE001
+            pass
     logger.info("RoverSwarm shutting down")
 
 
@@ -89,6 +101,7 @@ app.include_router(mission.router, prefix="/mission", tags=["mission"])
 app.include_router(map_routes.router, prefix="/map", tags=["map"])
 app.include_router(rovers.router, prefix="/rovers", tags=["rovers"])
 app.include_router(targets.router, prefix="/targets", tags=["targets"])
+app.include_router(findings.router, prefix="/findings", tags=["findings"])
 app.include_router(copilot.router, prefix="/api", tags=["copilot"])
 
 # --- WebSocket ---

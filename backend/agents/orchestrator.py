@@ -11,20 +11,34 @@ Responsibilities:
 """
 from __future__ import annotations
 
-# from crewai import Agent
+from crewai import Agent, LLM
+
+from config import settings
+from tools.redis_tools import redis_get, redis_publish, redis_set
+
 # import weave
 
 
-def build_orchestrator_agent():
-    """Build the orchestrator CrewAI Agent.
+def _llm() -> LLM | None:
+    if not settings.OPENAI_API_KEY:
+        return None
+    return LLM(model=settings.OPENAI_ORCHESTRATION_MODEL, api_key=settings.OPENAI_API_KEY)
 
-    TODO [Person 1]:
-      role="Mission Orchestrator"
-      goal="Coordinate two rovers to fully explore the space and collect approved targets"
-      backstory="Veteran exploration mission commander..."
-      tools=[read_mission_goal, split_zones, assign_zone, reassign_task, check_complete]
-    """
-    raise NotImplementedError("build_orchestrator_agent (Person 1)")
+
+def build_orchestrator_agent(llm: LLM | None = None) -> Agent:
+    """Build the mission-level orchestrator CrewAI Agent."""
+    return Agent(
+        role="Mission Orchestrator",
+        goal="Coordinate two rovers to fully explore the space and collect approved targets",
+        backstory=(
+            "Veteran exploration mission commander. Splits zones across rover1/rover2, "
+            "monitors mission-wide progress, and reassigns tasks when finds occur."
+        ),
+        tools=[redis_get, redis_set, redis_publish],
+        llm=llm or _llm(),
+        verbose=True,
+        allow_delegation=False,
+    )
 
 
 # @weave.op()

@@ -10,7 +10,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 # from redis_layer import mission_state
-# from agents.research import stream_analysis
+# from agents.rover_subagents import run_research_subagent
 # from coordination.task_assignment import reassign_to_nearest
 
 router = APIRouter()
@@ -32,7 +32,8 @@ async def approve_target(req: ApprovalRequest):
     TODO [Person 2]:
       - "collect":    mission_state.add_approved_target(...) then
                       coordination.reassign_to_nearest(...) (Person 1).
-      - "investigate": trigger agents.research.stream_analysis (stream to UI).
+      - "investigate": trigger agents.rover_subagents.run_research_subagent(rover_id)
+                      (or a future stream_research_analysis() helper there).
       - "ignore":     no-op / log.
       - Return the resulting state.
     """

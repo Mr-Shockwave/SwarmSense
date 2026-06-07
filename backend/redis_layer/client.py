@@ -121,6 +121,24 @@ async def smembers(key: str) -> list:
         return []
 
 
+# --- Hashes ---
+
+async def hset(key: str, field: str, value: Any) -> None:
+    try:
+        await get_redis().hset(key, field, _encode(value))
+    except Exception as exc:  # noqa: BLE001
+        _warn_once(exc)
+
+
+async def hgetall(key: str) -> dict:
+    try:
+        raw = await get_redis().hgetall(key)
+        return {k: _decode(v) for k, v in raw.items()}
+    except Exception as exc:  # noqa: BLE001
+        _warn_once(exc)
+        return {}
+
+
 # --- Pub/Sub ---
 
 async def publish(channel: str, message: Any) -> None:
@@ -128,6 +146,29 @@ async def publish(channel: str, message: Any) -> None:
         await get_redis().publish(channel, _encode(message))
     except Exception as exc:  # noqa: BLE001
         _warn_once(exc)
+
+
+async def subscribe(*channels: str):
+    """Async-generator that yields (channel, decoded_message) for each pub/sub
+    message on the given channels. Never raises fatally — on a connection error
+    it simply stops yielding so the caller's loop can retry.
+    """
+    pubsub = None
+    try:
+        pubsub = get_redis().pubsub()
+        await pubsub.subscribe(*channels)
+        async for message in pubsub.listen():
+            if message.get("type") != "message":
+                continue  # skip subscribe/unsubscribe confirmations
+            yield message.get("channel"), _decode(message.get("data"))
+    except Exception as exc:  # noqa: BLE001
+        _warn_once(exc)
+    finally:
+        if pubsub is not None:
+            try:
+                await pubsub.aclose()
+            except Exception:  # noqa: BLE001
+                pass
 
 
 async def close() -> None:

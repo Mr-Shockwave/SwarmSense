@@ -5,7 +5,7 @@ import AnalysisCard from "./AnalysisCard.jsx";
 
 export default function PingCard({ ping }) {
   // TODO [Person 4]:
-  //   - Appears when the vision agent detects a match (scientist:ping over WS).
+  //   - Appears when the per-rover vision subagent detects a match (scientist:ping over WS).
   //   - Show photo thumbnail + coordinates + object description.
   //   - Render ApprovalButtons; on INVESTIGATE, show AnalysisCard stream.
   if (!ping) return null;

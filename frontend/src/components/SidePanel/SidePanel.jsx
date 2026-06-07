@@ -11,6 +11,8 @@ export default function SidePanel({
   onToggleNode,
   canAddNode = false,
   onAddNode,
+  findings = [],
+  unseenFindings = 0,
 }) {
   return (
     <aside className="side-panel">
@@ -26,6 +28,7 @@ export default function SidePanel({
           onClick={() => onTabChange("findings")}
         >
           Findings
+          {unseenFindings > 0 && <span className="tab-badge">{unseenFindings}</span>}
         </button>
       </div>
 
@@ -67,11 +70,21 @@ export default function SidePanel({
           </>
         ) : (
           <>
-            <p className="side-heading">Findings</p>
-            <div className="findings-empty">
-              Detailed stats land here — what the agents found, when they found it,
-              and averages across the mission. Coming next.
-            </div>
+            <p className="side-heading">Findings · {findings.length}</p>
+            {findings.length === 0 ? (
+              <div className="findings-empty">
+                No findings yet. When an agent detects something matching the mission
+                criteria, it appears here and on the Findings screen.
+              </div>
+            ) : (
+              findings.map((f) => (
+                <div key={f.id} className="finding-side-item">
+                  <span className={`finding-side-dot ${f.status || "new"}`} />
+                  <span className="finding-side-label">{f.label}</span>
+                  <span className="finding-side-rover">{f.rover_id}</span>
+                </div>
+              ))
+            )}
           </>
         )}
       </div>
