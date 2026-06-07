@@ -9,20 +9,33 @@ Responsibilities:
 """
 from __future__ import annotations
 
-# from crewai import Agent
+from crewai import Agent, LLM
+
+from config import settings
+from tools.redis_tools import redis_get, redis_publish, redis_set
+
 # import weave
 
 
-def build_debug_agent():
-    """Build the debug CrewAI Agent.
+def _llm() -> LLM | None:
+    if not settings.OPENAI_API_KEY:
+        return None
+    return LLM(model=settings.OPENAI_ORCHESTRATION_MODEL, api_key=settings.OPENAI_API_KEY)
 
-    TODO [Person 1]:
-      role="Self-Healing Engineer"
-      goal="Detect, diagnose, and remediate rover faults autonomously"
-      backstory="An SRE that reads traces like tea leaves..."
-      tools=[read_error_log, read_weave_trace, push_fix]
-    """
-    raise NotImplementedError("build_debug_agent (Person 1)")
+
+def build_debug_agent(llm: LLM | None = None) -> Agent:
+    """Build the mission-level debug / self-healing CrewAI Agent."""
+    return Agent(
+        role="Self-Healing Engineer",
+        goal="Detect, diagnose, and remediate rover faults autonomously",
+        backstory=(
+            "An SRE that reads rover error logs and Weave traces to propose fixes."
+        ),
+        tools=[redis_get, redis_set, redis_publish],
+        llm=llm or _llm(),
+        verbose=True,
+        allow_delegation=False,
+    )
 
 
 # @weave.op()
