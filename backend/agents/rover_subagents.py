@@ -132,8 +132,6 @@ def run_vision_subagent(rover_id: str) -> dict[str, Any]:
     if photo_b64:
         phash = _perceptual_hash(photo_b64)
         image_id = f"{phash:016x}" if phash is not None else None
-        if image_id:
-            _store_image(image_id, photo_b64)
         found = _run_sync(analyze_photo(photo_b64, str(criteria)))
 
     result = {
