@@ -37,6 +37,12 @@ class Settings:
     # --- Execution mode ---
     SIMULATION_MODE: bool = _get_bool("SIMULATION_MODE", True)
 
+    # --- Agents ---
+    # When true, a background listener runs a subagent cycle on every new frame
+    # (event-driven on rover:frames). Set AGENTS_AUTORUN=false to disable (e.g.
+    # to avoid per-frame vision/LLM cost while developing the UI).
+    AGENTS_AUTORUN: bool = _get_bool("AGENTS_AUTORUN", True)
+
     # --- Ports ---
     BACKEND_PORT: int = int(os.getenv("BACKEND_PORT", "8000"))
     FRONTEND_PORT: int = int(os.getenv("FRONTEND_PORT", "5173"))

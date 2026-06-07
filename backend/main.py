@@ -69,18 +69,31 @@ async def lifespan(app: FastAPI):
     app.state.ws_bridge = asyncio.create_task(redis_bridge())
     logger.info("WebSocket live bridge started")
 
+    # --- 7. Event-driven agent runner ---
+    # Listens on rover:frames and runs a subagent cycle per new frame. Gated by
+    # AGENTS_AUTORUN so the UI can be developed without per-frame vision cost.
+    app.state.agent_listener = None
+    if settings.AGENTS_AUTORUN:
+        try:
+            from agents.rover_managers import agent_frame_listener
+            app.state.agent_listener = asyncio.create_task(agent_frame_listener())
+            logger.info("Agent frame listener started (event-driven)")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Agent frame listener failed to start: %s", exc)
+
     # TODO [Person 3]: instantiate rovers (SimulatedRover vs HardwareRover) per mode.
 
     yield
 
     # --- Shutdown ---
-    bridge = getattr(app.state, "ws_bridge", None)
-    if bridge is not None:
-        bridge.cancel()
-        try:
-            await bridge
-        except (asyncio.CancelledError, Exception):  # noqa: BLE001
-            pass
+    for task_attr in ("ws_bridge", "agent_listener"):
+        task = getattr(app.state, task_attr, None)
+        if task is not None:
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                pass
     logger.info("RoverSwarm shutting down")
 
 
