@@ -52,7 +52,6 @@ class Settings:
     # --- Hardware mode ---
     ROVER1_HOST: str = os.getenv("ROVER1_HOST", "")
     ROVER2_HOST: str = os.getenv("ROVER2_HOST", "")
-    GEMMA_MODEL_PATH: str = os.getenv("GEMMA_MODEL_PATH", "")
 
     # --- CORS (frontend origin) ---
     FRONTEND_ORIGIN: str = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")

@@ -29,8 +29,6 @@ numpy>=1.26
 pillow>=10.0          # photo encode/decode for the vision pipeline
 opencv-python-headless>=4.10  # phone camera stream capture (vision_pipeline/capture.py)
 
-# --- Edge / Gemma (hardware mode; optional in sim) ---
-# TODO [Person 3]: pin the Gemma 2B runtime you choose (ollama client, llama-cpp-python,
-#   transformers, etc.) and the Lego SPIKE/Mindstorms SDK.
-# ollama>=0.2
+# --- Hardware (hardware mode; optional in sim) ---
+# TODO [Person 3]: pin the Lego hub SDK (pybricks / SPIKE) used by the BLE sidecar.
 # pybricks  # or the relevant Lego API
