@@ -119,98 +119,35 @@ def _store_image(image_id: str, photo_b64: str) -> None:
 
 
 def run_vision_subagent(rover_id: str) -> dict[str, Any]:
-    """Analyze the rover's latest frame against mission criteria.
+    """Detect whether the rover's latest frame contains the target. Boolean verdict.
 
-    Frame dedup is handled upstream by the main agent (process_image), so this
-    just analyzes the current frame and writes the findings. The frame is
-    content-addressed at image:<image_id> and referenced by id from the JSON.
-    Empty `findings` => target not found.
+    Frame dedup is handled upstream by the main agent (process_image). Rich
+    description happens later in the research agent on scientist approval.
     """
     criteria = redis_get_raw("mission:criteria") or "(no criteria)"
     photo_b64 = _latest_frame(f"{rover_id}:images")
 
     image_id = None
-    vision: dict[str, Any] = {"findings": []}
+    found = False
     if photo_b64:
         phash = _perceptual_hash(photo_b64)
         image_id = f"{phash:016x}" if phash is not None else None
         if image_id:
             _store_image(image_id, photo_b64)
-        vision = _run_sync(analyze_photo(photo_b64, str(criteria)))
-    findings = vision.get("findings", [])
-
-    vision_payload = {"findings": findings, "image_id": image_id}
-    redis_set_raw(f"{rover_id}:vision:findings", vision_payload)
+        found = _run_sync(analyze_photo(photo_b64, str(criteria)))
 
     result = {
         "agent": subagent_label(rover_id, "vision"),
-        "match": bool(findings),   # derived, for existing consumers of vision:last
-        "findings": findings,      # canonical output
-        "image_id": image_id,      # fetch the frame at image:<image_id>
+        "match": found,
+        "image_id": image_id,
         "criteria": criteria,
         "has_frame": photo_b64 is not None,
     }
     redis_set_raw(f"{rover_id}:vision:last", result)
-    if findings:
-        redis_publish_raw(f"{rover_id}:vision", vision_payload)
+    if found:
+        redis_publish_raw(f"{rover_id}:vision", result)
         # TODO [Person 1 + Person 2]: call findings_state.add_finding(...) so the
         # scientist UI receives scientist:ping (see redis_layer/findings_state.py).
-    return result
-
-
-def run_research_subagent(rover_id: str) -> dict[str, Any]:
-    """Summarize vision findings for this rover (stub — no LLM required for dry-run)."""
-    criteria = redis_get_raw("mission:criteria") or "(no criteria)"
-    vision_data = redis_get_raw(f"{rover_id}:vision:findings") or {}
-    if not vision_data.get("findings"):
-        last = redis_get_raw(f"{rover_id}:vision:last") or {}
-        vision_data = {"findings": last.get("findings", []), "image_id": last.get("image_id")}
-
-    findings = vision_data.get("findings", [])
-    summary = ""
-    if findings:
-        labels = [f.get("label", "object") for f in findings]
-        summary = (
-            f"Research summary for {rover_id}: detected {len(findings)} candidate(s) "
-            f"matching criteria {criteria!r}: {', '.join(labels)}."
-        )
-
-    result = {
-        "agent": subagent_label(rover_id, "research"),
-        "findings_count": len(findings),
-        "summary": summary or f"No findings to research for {rover_id}.",
-        "criteria": criteria,
-        "image_id": vision_data.get("image_id"),
-    }
-    redis_set_raw(f"{rover_id}:research:last", result)
-    if findings:
-        redis_publish_raw(f"{rover_id}:research", result)
-    return result
-
-
-def run_error_subagent(rover_id: str) -> dict[str, Any]:
-    """Diagnose the latest faults logged for this rover (stub)."""
-    errors = redis_get_raw(f"{rover_id}:errors") or []
-    if not isinstance(errors, list):
-        errors = [errors] if errors else []
-
-    diagnosis = ""
-    if errors:
-        latest = errors[0] if errors else {}
-        diagnosis = (
-            f"Error analysis for {rover_id}: {len(errors)} fault(s) on record. "
-            f"Latest: {latest!r}. Recommend inspect sensors and retry last action."
-        )
-
-    result = {
-        "agent": subagent_label(rover_id, "error"),
-        "error_count": len(errors),
-        "diagnosis": diagnosis or f"No faults recorded for {rover_id}.",
-        "errors": errors[:5],
-    }
-    redis_set_raw(f"{rover_id}:error:last", result)
-    if errors:
-        redis_publish_raw(f"{rover_id}:error", result)
     return result
 
 
