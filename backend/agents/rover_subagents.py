@@ -14,6 +14,7 @@ hold tools in hierarchical crews).
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
@@ -77,34 +78,103 @@ def _latest_frame(images_key: str) -> str | None:
     return raw if isinstance(raw, str) else None
 
 
+# ── Frame dedup (perceptual hash) ────────────────────────────────────────────
+
+DEDUP_HAMMING_THRESHOLD = 6   # dHash bit distance; <= this => treat as same scene
+IMAGE_TTL_SECONDS = 3600      # content-addressed frames expire after an hour
+
+
+def _perceptual_hash(photo_b64: str) -> int | None:
+    """64-bit dHash of a base64 JPEG. None if it can't be decoded (dedup disabled)."""
+    try:
+        import cv2
+        import numpy as np
+
+        arr = np.frombuffer(base64.b64decode(photo_b64), dtype=np.uint8)
+        img = cv2.imdecode(arr, cv2.IMREAD_GRAYSCALE)
+        if img is None:
+            return None
+        small = cv2.resize(img, (9, 8), interpolation=cv2.INTER_AREA)
+        diff = small[:, 1:] > small[:, :-1]  # 8x8 = 64 bits
+        bits = 0
+        for v in diff.flatten():
+            bits = (bits << 1) | int(v)
+        return bits
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _hamming(a: int, b: int) -> int:
+    return bin(a ^ b).count("1")
+
+
+def _store_image(image_id: str, photo_b64: str) -> None:
+    """Content-address the frame once, with a TTL so it self-expires."""
+    try:
+        get_sync_redis().set(f"image:{image_id}", photo_b64, ex=IMAGE_TTL_SECONDS)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 # ── Runtimes (used by --dry-run and as reference behaviour) ──────────────────
 
 
 def run_vision_subagent(rover_id: str) -> dict[str, Any]:
     """Analyze the rover's latest frame against mission criteria.
 
-    Calls the shared GPT-4o vision primitive (agents.vision.analyze_photo) and
-    emits the canonical findings shape. Empty `findings` => target not found.
+    Dedupes near-identical frames via a perceptual hash so a static scene
+    captured every few seconds doesn't re-run vision or re-store the image. The
+    frame is content-addressed at image:<image_id> and referenced by id from the
+    findings JSON, rather than inlined on every write (which would bloat Redis).
+    Empty `findings` => target not found.
     """
     criteria = redis_get_raw("mission:criteria") or "(no criteria)"
     images_key = f"{rover_id}:images"
     photo_b64 = _latest_frame(images_key)
 
-    findings: list[dict[str, Any]] = []
-    if photo_b64:
-        vision = _run_sync(analyze_photo(photo_b64, str(criteria)))
+    phash = _perceptual_hash(photo_b64) if photo_b64 else None
+    prev = redis_get_raw(f"{rover_id}:vision:state") or {}
+    is_duplicate = (
+        phash is not None
+        and prev.get("hash") is not None
+        and prev.get("criteria") == criteria
+        and _hamming(phash, int(prev["hash"])) <= DEDUP_HAMMING_THRESHOLD
+    )
+
+    if is_duplicate:
+        # Same scene + same criteria as last cycle: reuse, skip vision + re-store.
+        image_id = prev.get("image_id")
+        cached = redis_get_raw(f"{rover_id}:vision:findings") or {"findings": []}
+        findings = cached.get("findings", [])
+    else:
+        image_id = f"{phash:016x}" if phash is not None else None
+        vision: dict[str, Any] = {"findings": []}
+        if photo_b64:
+            vision = _run_sync(analyze_photo(photo_b64, str(criteria)))
         findings = vision.get("findings", [])
+        if photo_b64 and image_id:
+            _store_image(image_id, photo_b64)
+        redis_set_raw(
+            f"{rover_id}:vision:state",
+            {"hash": phash, "image_id": image_id, "criteria": criteria},
+        )
+
+    # Canonical analyze_photo JSON, now carrying the image reference.
+    vision_payload = {"findings": findings, "image_id": image_id}
+    redis_set_raw(f"{rover_id}:vision:findings", vision_payload)
 
     result = {
         "agent": subagent_label(rover_id, "vision"),
         "match": bool(findings),   # derived, for existing consumers of vision:last
         "findings": findings,      # canonical output
+        "image_id": image_id,      # fetch the frame at image:<image_id>
         "criteria": criteria,
         "has_frame": photo_b64 is not None,
+        "deduped": is_duplicate,
     }
     redis_set_raw(f"{rover_id}:vision:last", result)
-    if findings:
-        redis_publish_raw(f"{rover_id}:vision", result)
+    if findings and not is_duplicate:  # don't re-publish a static match every cycle
+        redis_publish_raw(f"{rover_id}:vision", vision_payload)
     return result
 
 
