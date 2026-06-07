@@ -1,3 +1,12 @@
+from __future__ import annotations
+
+import weave
+from openai import AsyncOpenAI
+from pydantic import BaseModel
+
+from config import settings
+
+
 class VisionVerdict(BaseModel):
     found: bool
 

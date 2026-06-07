@@ -149,7 +149,6 @@ def run_vision_subagent(rover_id: str) -> dict[str, Any]:
     return result
 
 
-<<<<<<< HEAD
 def run_research_subagent(rover_id: str) -> dict[str, Any]:
     """Summarize vision findings for this rover (stub — no LLM required for dry-run)."""
     criteria = redis_get_raw("mission:criteria") or "(no criteria)"
@@ -217,8 +216,6 @@ def run_error_subagent(rover_id: str) -> dict[str, Any]:
     return result
 
 
-=======
->>>>>>> 93c5883a4c6f3626c5794a728766dbafa0b7ae91
 # ── CrewAI Agent factories ───────────────────────────────────────────────────
 
 
